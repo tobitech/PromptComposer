@@ -30,6 +30,11 @@
 
 ## Documentation & References
 - Always verify API usage against the latest official documentation on the web during implementation.
+- Preferred lookup order for up-to-date docs:
+  1) AppleDocsMCP (primary)
+  2) Local SDK headers (authoritative, non-JS)
+  3) Apple Documentation Archive
+  4) Web search fallback
 - Core references:
   - SwiftUI `NSViewRepresentable`: https://developer.apple.com/documentation/swiftui/nsviewrepresentable
   - `NSTextView` and delegate: https://developer.apple.com/documentation/appkit/nstextview and https://developer.apple.com/documentation/appkit/nstextviewdelegate
@@ -48,3 +53,4 @@
 ## Configuration & Platform Notes
 - Target is macOS (AppKit + SwiftUI + TextKit 2).
 - Prefer AppKit-backed text editing for performance; keep SwiftUI wrappers thin.
+- If a flaw or mismatch is discovered in `plan.md` during implementation, do not follow it blindly. Choose the best solution for the codebase and update `plan.md` to reflect the corrected approach.
