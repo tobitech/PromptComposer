@@ -6,14 +6,23 @@ final class PromptComposerTextView: NSTextView {
 		didSet { applyConfig() }
 	}
 
-	override init(frame frameRect: NSRect) {
-		super.init(frame: frameRect)
+	override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+		if let container {
+			super.init(frame: frameRect, textContainer: container)
+		} else {
+			let contentStorage = NSTextContentStorage()
+			let layoutManager = NSTextLayoutManager()
+			contentStorage.addTextLayoutManager(layoutManager)
+			let textContainer = NSTextContainer(size: .zero)
+			layoutManager.textContainer = textContainer
+			super.init(frame: frameRect, textContainer: textContainer)
+		}
 		applyConfig()
 	}
 
 	// TextKit 2 initializer path
 	convenience init() {
-		self.init(frame: .zero)
+		self.init(frame: .zero, textContainer: nil)
 	}
 
 	required init?(coder: NSCoder) {
