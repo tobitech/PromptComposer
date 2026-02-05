@@ -15,7 +15,7 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 		textColor: NSColor = .labelColor,
 		backgroundColor: NSColor = NSColor.controlAccentColor.withAlphaComponent(0.18),
 		horizontalPadding: CGFloat = 6,
-		verticalPadding: CGFloat = 2,
+		verticalPadding: CGFloat = 1,
 		cornerRadius: CGFloat = 6
 	) {
 		self.token = token
@@ -48,8 +48,9 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 			.font: tokenFont
 		]
 		let textSize = (displayText as NSString).size(withAttributes: attributes)
+		let lineHeight = ceil(tokenFont.ascender - tokenFont.descender)
 		let width = ceil(textSize.width + (horizontalPadding * 2))
-		let height = ceil(textSize.height + (verticalPadding * 2))
+		let height = ceil(lineHeight + (verticalPadding * 2))
 		return NSSize(width: width, height: height)
 	}
 
@@ -70,10 +71,10 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 			.font: tokenFont,
 			.foregroundColor: textColor
 		]
-		let textSize = (displayText as NSString).size(withAttributes: attributes)
+		let baselineY = cellFrame.origin.y + cellBaselineOffset().y
 		let textOrigin = NSPoint(
 			x: cellFrame.origin.x + horizontalPadding,
-			y: cellFrame.origin.y + (cellFrame.height - textSize.height) / 2
+			y: baselineY - tokenFont.ascender
 		)
 		(displayText as NSString).draw(at: textOrigin, withAttributes: attributes)
 	}

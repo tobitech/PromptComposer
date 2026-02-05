@@ -9,11 +9,22 @@ struct PromptComposerDemoView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
+			Text("Plain string preview:")
+				.font(.headline)
+			Text(state.attributedText.string)
+				.textSelection(.enabled)
+				.frame(maxWidth: .infinity, alignment: .leading)
+
+			Spacer(minLength: 0)
+
 			PromptComposerView(
 				state: $state,
 				config: {
 					var c = PromptComposerConfig()
 					c.submitsOnEnter = true
+					c.minVisibleLines = 1
+					c.maxVisibleLines = 15
+					c.growthDirection = .up
 					c.onSubmit = {
 						// In Step 1 we just print; later we’ll expose a structured document model.
 						print("Submit: \(state.attributedText.string)")
@@ -21,13 +32,7 @@ struct PromptComposerDemoView: View {
 					return c
 				}()
 			)
-			.frame(minHeight: 120)
-
-			Text("Plain string preview:")
-				.font(.headline)
-			Text(state.attributedText.string)
-				.textSelection(.enabled)
-				.frame(maxWidth: .infinity, alignment: .leading)
+			.fixedSize(horizontal: false, vertical: true)
 		}
 		.padding()
 	}

@@ -35,7 +35,9 @@ public struct PromptComposerView: NSViewRepresentable {
 		textView.setSelectedRange(state.selectedRange)
 
 		let scrollView = PromptComposerScrollView(textView: textView, config: config)
+		context.coordinator.scrollView = scrollView
 		context.coordinator.textView = textView
+		scrollView.updateHeight()
 
 		return scrollView
 	}
@@ -45,8 +47,7 @@ public struct PromptComposerView: NSViewRepresentable {
 
 		// Apply config changes if the struct changes.
 		textView.config = config
-		nsView.hasVerticalScroller = config.hasVerticalScroller
-		nsView.hasHorizontalScroller = config.hasHorizontalScroller
+		nsView.applyConfig(config)
 
 		// Avoid feedback loops when we're pushing state into AppKit.
 		context.coordinator.isApplyingSwiftUIUpdate = true
@@ -77,6 +78,7 @@ public struct PromptComposerView: NSViewRepresentable {
 	public final class Coordinator: NSObject, NSTextViewDelegate {
 		fileprivate let parent: PromptComposerView
 		fileprivate weak var textView: NSTextView?
+		fileprivate weak var scrollView: PromptComposerScrollView?
 
 		fileprivate var isApplyingSwiftUIUpdate = false
 
@@ -92,6 +94,7 @@ public struct PromptComposerView: NSViewRepresentable {
 			// Push the updated attributed string to SwiftUI.
 			parent.state.attributedText = tv.attributedString()
 			parent.state.selectedRange = tv.selectedRange()
+			scrollView?.updateHeight()
 		}
 
 		public func textViewDidChangeSelection(_ notification: Notification) {
