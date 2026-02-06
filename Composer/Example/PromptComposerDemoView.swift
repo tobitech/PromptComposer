@@ -26,8 +26,7 @@ struct PromptComposerDemoView: View {
 					c.maxVisibleLines = 10
 					c.growthDirection = .up
 					c.suggestionsProvider = { context in
-						let shouldShow = context.text.contains("@") || context.text.contains("/")
-						return shouldShow ? PromptComposerDemoView.sampleSuggestions() : []
+						PromptComposerDemoView.sampleSuggestions(for: context.triggerCharacter)
 					}
 					c.onSuggestionSelected = { suggestion in
 						print("Selected suggestion: \(suggestion.title)")
@@ -61,16 +60,115 @@ struct PromptComposerDemoView: View {
 		)
 	}
 
-	private static func sampleSuggestions() -> [PromptSuggestion] {
-		[
-			PromptSuggestion(title: "team", subtitle: "Variable", kind: .variable),
-			PromptSuggestion(title: "Budget.xlsx", subtitle: "File mention", kind: .fileMention),
-			PromptSuggestion(title: "Schedule Review", subtitle: "Command", kind: .command),
-			PromptSuggestion(title: "Quarterly Report.pdf", subtitle: "File mention", kind: .fileMention)
-		]
+	private static func sampleSuggestions(for trigger: Character?) -> [PromptSuggestion] {
+		switch trigger {
+		case "@":
+			return [
+				PromptSuggestion(
+					title: "State Update Warning - History",
+					section: "Tabs",
+					symbolName: "bubble.left"
+				),
+				PromptSuggestion(
+					title: "Upload file from computer",
+					section: "Files",
+					symbolName: "doc.badge.plus"
+				),
+				PromptSuggestion(
+					title: "Search Web",
+					section: "Tools",
+					symbolName: "globe"
+				),
+				PromptSuggestion(
+					title: "Search memory",
+					section: "Tools",
+					symbolName: "scribble"
+				),
+				PromptSuggestion(
+					title: "Autofill",
+					section: "Tools",
+					symbolName: "character.textbox"
+				),
+				PromptSuggestion(
+					title: "Tabs",
+					section: "Tools",
+					symbolName: "rectangle.on.rectangle"
+				),
+				PromptSuggestion(
+					title: "Gmail",
+					section: "Apps",
+					symbolName: "envelope.fill"
+				),
+				PromptSuggestion(
+					title: "Google Calendar",
+					section: "Apps",
+					symbolName: "calendar"
+				),
+			]
+		case "/":
+			return [
+				PromptSuggestion(
+					title: "Research",
+					subtitle: "Access Dia's reasoning model for deeper thinking.",
+					kind: .command,
+					section: "General",
+					symbolName: "lightbulb"
+				),
+				PromptSuggestion(
+					title: "Analyze",
+					subtitle: "Analyze this content, looking for bias, patterns, trends, contradictions.",
+					kind: .command,
+					section: "General",
+					symbolName: "magnifyingglass.circle"
+				),
+				PromptSuggestion(
+					title: "Explain",
+					subtitle: "Please explain the concept, topic, or content in clear, accessible language.",
+					kind: .command,
+					section: "General",
+					symbolName: "lightbulb.max"
+				),
+				PromptSuggestion(
+					title: "Summarize",
+					subtitle: "Please provide a clear, concise summary of the attached content.",
+					kind: .command,
+					section: "General",
+					symbolName: "line.3.horizontal.decrease"
+				),
+			]
+		default:
+			return []
+		}
 	}
 }
 
 #Preview {
 	PromptComposerDemoView()
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

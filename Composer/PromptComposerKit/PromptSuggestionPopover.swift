@@ -25,6 +25,43 @@ final class PromptSuggestionViewModel: ObservableObject {
 		let nextIndex = min(max(selectedIndex + delta, 0), items.count - 1)
 		selectedIndex = nextIndex
 	}
+
+	var groupedItems: [PromptSuggestionSection] {
+		var sections: [PromptSuggestionSection] = []
+		var currentTitle: String?
+		var currentRows: [PromptSuggestionIndexedItem] = []
+
+		for (index, item) in items.enumerated() {
+			let normalizedTitle = item.section?.uppercased()
+			if normalizedTitle != currentTitle {
+				if !currentRows.isEmpty {
+					sections.append(PromptSuggestionSection(title: currentTitle, rows: currentRows))
+					currentRows = []
+				}
+				currentTitle = normalizedTitle
+			}
+			currentRows.append(PromptSuggestionIndexedItem(index: index, item: item))
+		}
+
+		if !currentRows.isEmpty {
+			sections.append(PromptSuggestionSection(title: currentTitle, rows: currentRows))
+		}
+
+		return sections
+	}
+}
+
+struct PromptSuggestionIndexedItem: Identifiable {
+	let index: Int
+	let item: PromptSuggestion
+
+	var id: Int { index }
+}
+
+struct PromptSuggestionSection: Identifiable {
+	let id = UUID()
+	let title: String?
+	let rows: [PromptSuggestionIndexedItem]
 }
 
 struct PromptSuggestionListView: View {
@@ -32,21 +69,47 @@ struct PromptSuggestionListView: View {
 	let onSelect: (PromptSuggestion) -> Void
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
-			ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
-				PromptSuggestionRow(
-					item: item,
-					isSelected: index == model.selectedIndex
-				)
-				.onTapGesture {
-					model.selectedIndex = index
-					onSelect(item)
+		VStack(alignment: .leading, spacing: 10) {
+			ForEach(model.groupedItems) { section in
+				VStack(alignment: .leading, spacing: 6) {
+					if let title = section.title, !title.isEmpty {
+						Text(title)
+							.font(.system(size: 12, weight: .semibold))
+							.foregroundColor(Color(NSColor.tertiaryLabelColor))
+					}
+
+					VStack(spacing: 0) {
+						ForEach(section.rows) { indexed in
+							PromptSuggestionRow(
+								item: indexed.item,
+								isSelected: indexed.index == model.selectedIndex
+							)
+							.onTapGesture {
+								model.selectedIndex = indexed.index
+								onSelect(indexed.item)
+							}
+
+							if indexed.id != section.rows.last?.id {
+								Divider()
+									.overlay(Color(NSColor.separatorColor).opacity(0.5))
+							}
+						}
+					}
 				}
 			}
 		}
-		.padding(8)
-		.frame(minWidth: 240, idealWidth: 280)
-		.background(Color(NSColor.windowBackgroundColor))
+		.padding(12)
+		.frame(width: 360)
+		.fixedSize(horizontal: false, vertical: true)
+		.background(
+			RoundedRectangle(cornerRadius: 14, style: .continuous)
+				.fill(Color(NSColor.windowBackgroundColor))
+		)
+			.overlay(
+				RoundedRectangle(cornerRadius: 14, style: .continuous)
+					.stroke(Color(NSColor.separatorColor).opacity(0.75), lineWidth: 1)
+			)
+		.shadow(color: Color.black.opacity(0.13), radius: 16, x: 0, y: 6)
 	}
 }
 
@@ -54,78 +117,109 @@ struct PromptSuggestionRow: View {
 	let item: PromptSuggestion
 	let isSelected: Bool
 
-	private var kindLabel: String? {
-		guard let kind = item.kind else { return nil }
+	private var iconName: String {
+		if let symbolName = item.symbolName {
+			return symbolName
+		}
+		guard let kind = item.kind else { return "sparkle.magnifyingglass" }
 		switch kind {
 		case .variable:
-			return "VAR"
+			return "text.cursor"
 		case .fileMention:
-			return "FILE"
+			return "doc"
 		case .command:
-			return "CMD"
+			return "bolt"
 		}
 	}
 
 	var body: some View {
-		HStack(alignment: .center, spacing: 8) {
-			if let kindLabel {
-				Text(kindLabel)
-					.font(.system(size: 10, weight: .semibold))
-					.padding(.horizontal, 6)
-					.padding(.vertical, 2)
-					.background(Color(NSColor.controlAccentColor.withAlphaComponent(0.2)))
-					.cornerRadius(4)
-			}
+		HStack(alignment: .top, spacing: 10) {
+			Image(systemName: iconName)
+				.font(.system(size: 15, weight: .semibold))
+				.frame(width: 32, height: 32)
+				.background(
+					Circle()
+						.fill(isSelected ? Color.white.opacity(0.22) : Color(NSColor.controlBackgroundColor))
+				)
+				.foregroundColor(isSelected ? Color.white : Color(NSColor.labelColor))
 
 			VStack(alignment: .leading, spacing: 2) {
 				Text(item.title)
-					.font(.system(size: 13, weight: .semibold))
-					.foregroundColor(Color(NSColor.labelColor))
+					.font(.system(size: 17, weight: .semibold))
+					.foregroundColor(isSelected ? Color.white : Color(NSColor.labelColor))
 				if let subtitle = item.subtitle {
 					Text(subtitle)
-						.font(.system(size: 11))
-						.foregroundColor(Color(NSColor.secondaryLabelColor))
+						.font(.system(size: 14, weight: .medium))
+						.foregroundColor(
+							isSelected
+								? Color.white.opacity(0.92)
+								: Color(NSColor.secondaryLabelColor)
+						)
 				}
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 		}
 		.padding(.horizontal, 8)
-		.padding(.vertical, 6)
+		.padding(.vertical, 7)
 		.background(
-			RoundedRectangle(cornerRadius: 6)
-				.fill(isSelected ? Color(NSColor.selectedTextBackgroundColor.withAlphaComponent(0.35)) : Color.clear)
+			RoundedRectangle(cornerRadius: 8, style: .continuous)
+				.fill(isSelected ? Color(NSColor.controlAccentColor) : Color.clear)
 		)
 		.contentShape(Rectangle())
 	}
 }
 
-final class PromptSuggestionPopoverController: NSObject {
-	private let popover = NSPopover()
+final class PromptSuggestionPanelController: NSObject {
+	private final class FloatingPanel: NSPanel {
+		override var canBecomeKey: Bool { false }
+		override var canBecomeMain: Bool { false }
+	}
+
+	private let panel: FloatingPanel
 	private let viewModel = PromptSuggestionViewModel()
+	private let hostingView: NSHostingView<PromptSuggestionListView>
+	private var anchorRange: NSRange?
 
 	weak var textView: PromptComposerTextView?
 
 	override init() {
-		super.init()
-		let hostingController = NSHostingController(
+		hostingView = NSHostingView(
 			rootView: PromptSuggestionListView(
-				model: viewModel,
-				onSelect: { [weak self] item in
-					self?.select(item)
-				}
+				model: PromptSuggestionViewModel(),
+				onSelect: { _ in }
 			)
 		)
-		popover.contentViewController = hostingController
-		popover.behavior = .semitransient
-		popover.animates = true
+		panel = FloatingPanel(
+			contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
+			styleMask: [.borderless, .nonactivatingPanel],
+			backing: .buffered,
+			defer: true
+		)
+		super.init()
+
+		hostingView.rootView = PromptSuggestionListView(
+			model: viewModel,
+			onSelect: { [weak self] item in
+				self?.select(item)
+			}
+		)
+		panel.contentView = hostingView
+		panel.isOpaque = false
+		panel.backgroundColor = .clear
+		panel.hasShadow = true
+		panel.level = .floating
+		panel.isFloatingPanel = true
+		panel.hidesOnDeactivate = false
+		panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
 	}
 
 	var isVisible: Bool {
-		popover.isShown
+		panel.isVisible
 	}
 
-	func update(items: [PromptSuggestion]) {
+	func update(items: [PromptSuggestion], anchorRange: NSRange?) {
 		viewModel.updateItems(items)
+		self.anchorRange = anchorRange
 
 		guard !items.isEmpty else {
 			close()
@@ -135,13 +229,16 @@ final class PromptSuggestionPopoverController: NSObject {
 		showOrUpdate()
 	}
 
-	func updateAnchor() {
-		guard popover.isShown, let anchorRect = anchorRect() else { return }
-		popover.positioningRect = anchorRect
+	func updateAnchor(anchorRange: NSRange? = nil) {
+		if let anchorRange {
+			self.anchorRange = anchorRange
+		}
+		guard panel.isVisible else { return }
+		positionPanel()
 	}
 
 	func handleKeyDown(_ event: NSEvent) -> Bool {
-		guard popover.isShown else { return false }
+		guard panel.isVisible else { return false }
 
 		switch event.keyCode {
 		case 125: // Down arrow
@@ -165,28 +262,65 @@ final class PromptSuggestionPopoverController: NSObject {
 		}
 	}
 
-	private func showOrUpdate() {
-		guard let textView, let anchorRect = anchorRect() else { return }
-
-		if popover.isShown {
-			popover.positioningRect = anchorRect
-			return
-		}
-
-		popover.show(relativeTo: anchorRect, of: textView, preferredEdge: .maxY)
-		popover.positioningRect = anchorRect
-	}
-
-	private func select(_ item: PromptSuggestion) {
-		textView?.config.onSuggestionSelected?(item)
+	func dismiss() {
 		close()
 	}
 
-	private func close() {
-		popover.performClose(nil)
+	private func showOrUpdate() {
+		guard textView != nil else { return }
+		positionPanel()
+		if !panel.isVisible {
+			panel.orderFront(nil)
+		}
 	}
 
-	private func anchorRect() -> NSRect? {
-		textView?.suggestionAnchorRect()
+	private func select(_ item: PromptSuggestion) {
+		let onSuggestionSelected = textView?.config.onSuggestionSelected
+		close()
+		DispatchQueue.main.async {
+			onSuggestionSelected?(item)
+		}
+	}
+
+	private func close() {
+		panel.orderOut(nil)
+	}
+
+	private func positionPanel() {
+		guard
+			let textView,
+			let anchorRect = textView.suggestionAnchorScreenRect(for: anchorRange)
+		else {
+			return
+		}
+
+		let fittingSize = hostingView.fittingSize
+		let panelWidth = max(300, min(420, fittingSize.width))
+		let panelHeight = max(80, min(420, fittingSize.height))
+
+		let spacing: CGFloat = 8
+		var originX = anchorRect.minX
+		var originY = anchorRect.maxY + spacing
+
+		if let screen = textView.window?.screen ?? NSScreen.main {
+			let safeFrame = screen.visibleFrame.insetBy(dx: 8, dy: 8)
+
+			if originX + panelWidth > safeFrame.maxX {
+				originX = safeFrame.maxX - panelWidth
+			}
+			if originX < safeFrame.minX {
+				originX = safeFrame.minX
+			}
+
+			if originY + panelHeight > safeFrame.maxY {
+				originY = anchorRect.minY - panelHeight - spacing
+			}
+			if originY < safeFrame.minY {
+				originY = safeFrame.minY
+			}
+		}
+
+		let frame = NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight)
+		panel.setFrame(frame, display: panel.isVisible)
 	}
 }

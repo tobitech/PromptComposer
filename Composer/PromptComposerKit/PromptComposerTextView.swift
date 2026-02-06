@@ -6,7 +6,7 @@ final class PromptComposerTextView: NSTextView {
 		didSet { applyConfig() }
 	}
 	
-	var suggestionController: PromptSuggestionPopoverController?
+	var suggestionController: PromptSuggestionPanelController?
 
 	override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
 		if let container {
@@ -101,21 +101,33 @@ final class PromptComposerTextView: NSTextView {
 		super.keyDown(with: event)
 	}
 
-	func suggestionAnchorRect() -> NSRect? {
-		guard let window else { return nil }
+	override func resignFirstResponder() -> Bool {
+		let didResign = super.resignFirstResponder()
+		if didResign {
+			suggestionController?.dismiss()
+		}
+		return didResign
+	}
 
+	func suggestionAnchorScreenRect(for triggerRange: NSRange?) -> NSRect? {
 		let length = string.utf16.count
-		let location = min(max(0, selectedRange().location), length)
-		let caretRange = NSRange(location: location, length: 0)
-		let screenRect = firstRect(forCharacterRange: caretRange, actualRange: nil)
-		let windowRect = window.convertFromScreen(screenRect)
-		let viewRect = convert(windowRect, from: nil).standardized
+		let selectionLocation = min(max(0, selectedRange().location), length)
+		let clampedTriggerRange: NSRange? = {
+			guard let triggerRange else { return nil }
+			guard triggerRange.location >= 0, triggerRange.location < length else { return nil }
+			let maxLength = length - triggerRange.location
+			let triggerLength = min(max(0, triggerRange.length), maxLength)
+			return NSRange(location: triggerRange.location, length: triggerLength)
+		}()
+
+		let characterRange = clampedTriggerRange ?? NSRange(location: selectionLocation, length: 0)
+		let screenRect = firstRect(forCharacterRange: characterRange, actualRange: nil).standardized
 
 		return NSRect(
-			x: viewRect.origin.x,
-			y: viewRect.origin.y,
-			width: max(1, viewRect.size.width),
-			height: max(1, viewRect.size.height)
+			x: screenRect.origin.x,
+			y: screenRect.origin.y,
+			width: max(1, screenRect.size.width),
+			height: max(1, screenRect.size.height)
 		)
 	}
 

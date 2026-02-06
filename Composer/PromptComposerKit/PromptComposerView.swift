@@ -81,7 +81,7 @@ public struct PromptComposerView: NSViewRepresentable {
 		fileprivate let parent: PromptComposerView
 		fileprivate weak var textView: NSTextView?
 		fileprivate weak var scrollView: PromptComposerScrollView?
-		fileprivate let suggestionController = PromptSuggestionPopoverController()
+		fileprivate let suggestionController = PromptSuggestionPanelController()
 
 		fileprivate var isApplyingSwiftUIUpdate = false
 
@@ -107,7 +107,7 @@ public struct PromptComposerView: NSViewRepresentable {
 			else { return }
 
 			parent.state.selectedRange = tv.selectedRange()
-			suggestionController.updateAnchor()
+			updateSuggestions(for: tv)
 		}
 
 		public func textView(
@@ -133,16 +133,67 @@ public struct PromptComposerView: NSViewRepresentable {
 			}
 
 			guard let provider = promptTextView.config.suggestionsProvider else {
-				suggestionController.update(items: [])
+				suggestionController.update(items: [], anchorRange: nil)
 				return
 			}
 
+			let trigger = activeTrigger(in: promptTextView.string, selectedRange: promptTextView.selectedRange())
 			let context = PromptSuggestionContext(
 				text: promptTextView.string,
-				selectedRange: promptTextView.selectedRange()
+				selectedRange: promptTextView.selectedRange(),
+				triggerCharacter: trigger?.character,
+				triggerRange: trigger?.range
 			)
 			let items = provider(context)
-			suggestionController.update(items: items)
+			suggestionController.update(items: items, anchorRange: trigger?.range)
+		}
+
+		private struct ActiveTrigger {
+			let character: Character
+			let range: NSRange
+		}
+
+		private func activeTrigger(in text: String, selectedRange: NSRange) -> ActiveTrigger? {
+			guard selectedRange.length == 0 else { return nil }
+
+			let nsText = text as NSString
+			let textLength = nsText.length
+			let caretLocation = min(max(0, selectedRange.location), textLength)
+			guard caretLocation > 0 else { return nil }
+
+			var index = caretLocation - 1
+			while index >= 0 {
+				let value = nsText.character(at: index)
+				if isWhitespaceOrNewline(value) {
+					return nil
+				}
+
+				if value == 64 /* @ */ {
+					return ActiveTrigger(character: "@", range: NSRange(location: index, length: 1))
+				}
+
+				if value == 47 /* / */ {
+					if index == 0 {
+						return ActiveTrigger(character: "/", range: NSRange(location: index, length: 1))
+					}
+
+					let previous = nsText.character(at: index - 1)
+					if isWhitespaceOrNewline(previous) {
+						return ActiveTrigger(character: "/", range: NSRange(location: index, length: 1))
+					}
+
+					return nil
+				}
+
+				index -= 1
+			}
+
+			return nil
+		}
+
+		private func isWhitespaceOrNewline(_ value: unichar) -> Bool {
+			guard let scalar = UnicodeScalar(value) else { return false }
+			return CharacterSet.whitespacesAndNewlines.contains(scalar)
 		}
 	}
 }
