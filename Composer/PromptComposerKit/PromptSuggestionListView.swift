@@ -40,8 +40,18 @@ struct PromptSuggestionListView: View {
 		isCompact ? 8 : 10
 	}
 
-	private var suggestionScrollAnimation: Animation {
-		.easeInOut(duration: 0.2)
+	private func suggestionScrollAnimation(from oldSelectedIndex: Int, to newSelectedIndex: Int) -> Animation {
+		if isWrappedTransition(from: oldSelectedIndex, to: newSelectedIndex) {
+			return .easeInOut(duration: 0.26)
+		}
+		return .easeOut(duration: 0.18)
+	}
+
+	private func isWrappedTransition(from oldSelectedIndex: Int, to newSelectedIndex: Int) -> Bool {
+		guard model.items.count > 1 else { return false }
+		let lastIndex = model.items.count - 1
+		return (oldSelectedIndex == lastIndex && newSelectedIndex == 0)
+			|| (oldSelectedIndex == 0 && newSelectedIndex == lastIndex)
 	}
 
 	private func select(_ indexed: PromptSuggestionIndexedItem) {
@@ -71,8 +81,7 @@ struct PromptSuggestionListView: View {
 			return
 		}
 
-		let anchor: UnitPoint = selectedIndex > previousSelectedIndex ? .bottom : .top
-		scrollProxy.scrollTo(selectedIndex, anchor: anchor)
+		scrollProxy.scrollTo(selectedIndex)
 	}
 
 	var body: some View {
@@ -110,7 +119,12 @@ struct PromptSuggestionListView: View {
 				}
 
 				if !accessibilityReduceMotion, oldSelectedIndex != newSelectedIndex {
-					withAnimation(suggestionScrollAnimation) {
+					withAnimation(
+						suggestionScrollAnimation(
+							from: oldSelectedIndex,
+							to: newSelectedIndex
+						)
+					) {
 						scrollAction()
 					}
 				} else {

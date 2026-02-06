@@ -45,8 +45,11 @@ final class PromptSuggestionViewModel {
 
 	func moveSelection(by delta: Int) {
 		guard !items.isEmpty else { return }
-		let nextIndex = min(max(selectedIndex + delta, 0), items.count - 1)
-		selectedIndex = nextIndex
+
+		let count = items.count
+		let normalizedCurrentIndex = min(max(selectedIndex, 0), count - 1)
+		let wrappedIndex = ((normalizedCurrentIndex + delta) % count + count) % count
+		selectedIndex = wrappedIndex
 	}
 
 	var groupedItems: [PromptSuggestionSection] {
