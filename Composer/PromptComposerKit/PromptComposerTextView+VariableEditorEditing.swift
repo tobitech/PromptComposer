@@ -47,6 +47,16 @@ extension PromptComposerTextView {
 
 	func handleSelectionDidChange() {
 		guard let active = activeVariableEditorContext else { return }
+
+		// When the variable editor field is visible, only react to selection
+		// changes if the text view itself is the first responder. During tab
+		// navigation between variables, the deferred selection-change callback
+		// may fire with a stale position; ignoring it prevents the newly opened
+		// editor from being prematurely committed.
+		if !variableEditorField.isHidden {
+			guard window?.firstResponder === self else { return }
+		}
+
 		let selection = selectedRange()
 		let range = active.range
 		let intersectsToken = NSIntersectionRange(selection, range).length > 0

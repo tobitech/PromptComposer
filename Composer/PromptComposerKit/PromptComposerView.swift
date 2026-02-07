@@ -185,6 +185,17 @@ public struct PromptComposerView: NSViewRepresentable {
 				return false
 			}
 
+			switch commandSelector {
+			case #selector(NSResponder.insertTab(_:)):
+				return promptTextView.handleTabNavigationCommand(forward: true)
+			case #selector(NSResponder.insertTabIgnoringFieldEditor(_:)):
+				return promptTextView.handleTabNavigationCommand(forward: true)
+			case #selector(NSResponder.insertBacktab(_:)):
+				return promptTextView.handleTabNavigationCommand(forward: false)
+			default:
+				break
+			}
+
 			return promptTextView.handleUnresolvedVariableTokenCommand(commandSelector)
 		}
 

@@ -19,10 +19,11 @@ extension PromptComposerTextView {
 				in: textView,
 				movingForward: false
 			)
-		case #selector(NSResponder.insertTab(_:)):
-			return handleVariableEditorTabNavigation(forward: true)
+		case #selector(NSResponder.insertTab(_:)),
+			#selector(NSResponder.insertTabIgnoringFieldEditor(_:)):
+			return handleTabNavigationCommand(forward: true)
 		case #selector(NSResponder.insertBacktab(_:)):
-			return handleVariableEditorTabNavigation(forward: false)
+			return handleTabNavigationCommand(forward: false)
 		case #selector(NSResponder.cancelOperation(_:)):
 			cancelVariableEditor()
 			window?.makeFirstResponder(self)
@@ -84,11 +85,11 @@ extension PromptComposerTextView {
 			return true
 		}
 		guard let active = activeVariableEditorContext else {
-			return focusAdjacentToken(from: selectedRange(), forward: forward)
+			return focusAdjacentUnresolvedVariableToken(from: selectedRange(), forward: forward)
 		}
 
 		let currentSelection = active.range
 		commitVariableEditorChanges()
-		return focusAdjacentToken(from: currentSelection, forward: forward)
+		return focusAdjacentUnresolvedVariableToken(from: currentSelection, forward: forward)
 	}
 }

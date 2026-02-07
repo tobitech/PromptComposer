@@ -169,6 +169,37 @@ extension PromptComposerTextView {
 			.map(\.range)
 	}
 
+	func unresolvedVariableTokenContexts(in textStorage: NSTextStorage) -> [TokenContext] {
+		tokenContexts(in: textStorage).filter { context in
+			context.token.kind == .variable
+				&& !TokenAttachmentCell.isVariableResolved(context.token)
+		}
+	}
+
+	func focusAdjacentUnresolvedVariableToken(from selection: NSRange, forward: Bool) -> Bool {
+		guard let textStorage else { return false }
+		let contexts = unresolvedVariableTokenContexts(in: textStorage)
+		guard !contexts.isEmpty else { return false }
+
+		let clampedSelection = clampRange(selection, length: textStorage.length)
+		let selectedIndex = selectedTokenContextIndex(in: contexts, selection: clampedSelection)
+		let targetContext: TokenContext
+
+		if let selectedIndex {
+			let offset = forward ? 1 : -1
+			let wrappedIndex = ((selectedIndex + offset) % contexts.count + contexts.count) % contexts.count
+			targetContext = contexts[wrappedIndex]
+		} else if forward {
+			targetContext = contexts.first(where: { $0.range.location >= clampedSelection.location }) ?? contexts[0]
+		} else {
+			targetContext = contexts.last(where: { ($0.range.location + $0.range.length) <= clampedSelection.location })
+				?? contexts[contexts.count - 1]
+		}
+
+		beginVariableTokenEditing(at: targetContext.range.location, suggestedCellFrame: nil)
+		return true
+	}
+
 	func focusAdjacentToken(from selection: NSRange, forward: Bool) -> Bool {
 		guard let textStorage else { return false }
 		let contexts = tokenContexts(in: textStorage)

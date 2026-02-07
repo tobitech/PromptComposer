@@ -143,13 +143,10 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		}
 
 		if
-			config.variableTokenTabNavigationEnabled,
-			event.keyCode == 48, // Tab
-			suggestionController?.isVisible != true,
-			activeVariableEditorContext == nil
+			event.keyCode == 48 // Tab
 		{
 			let movesBackward = event.modifierFlags.contains(.shift)
-			if focusAdjacentToken(from: selectedRange(), forward: !movesBackward) {
+			if handleTabNavigationCommand(forward: !movesBackward) {
 				return
 			}
 		}
@@ -169,6 +166,45 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		}
 
 		super.keyDown(with: event)
+	}
+
+	func handleTabNavigationCommand(forward: Bool) -> Bool {
+		guard config.variableTokenTabNavigationEnabled else { return false }
+		guard suggestionController?.isVisible != true else { return false }
+
+		if let active = activeVariableEditorContext {
+			let activeLocation = active.range.location
+			commitVariableEditorChanges()
+
+			guard let textStorage else { return false }
+			let textLength = textStorage.length
+
+			let clampedActiveLocation = min(
+				max(0, activeLocation),
+				max(0, textLength - 1)
+			)
+			let committedTokenRange: NSRange? = {
+				guard textLength > 0 else { return nil }
+				return tokenRange(containing: clampedActiveLocation, in: textStorage)
+			}()
+
+			let navigationLocation: Int
+			if forward {
+				navigationLocation = committedTokenRange.map { $0.location + $0.length }
+					?? min(max(0, activeLocation), textLength)
+			} else {
+				navigationLocation = committedTokenRange?.location
+					?? min(max(0, activeLocation), textLength)
+			}
+
+			let navigationSelection = NSRange(
+				location: min(max(0, navigationLocation), textLength),
+				length: 0
+			)
+			return focusAdjacentUnresolvedVariableToken(from: navigationSelection, forward: forward)
+		}
+
+		return focusAdjacentUnresolvedVariableToken(from: selectedRange(), forward: forward)
 	}
 
 	override func paste(_ sender: Any?) {
