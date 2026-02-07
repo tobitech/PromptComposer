@@ -17,6 +17,7 @@ struct PromptComposerDemoView: View {
 		config.suggestionPanelMaxHeight = 280
 		config.compactSuggestionPanelWidth = 320
 		config.compactSuggestionPanelMaxHeight = 280
+		config.autoFocusFirstVariableTokenOnAppear = true
 		config.suggestFiles = { query in
 			Self.sampleFileSuggestions(matching: query)
 		}
@@ -61,11 +62,17 @@ struct PromptComposerDemoView: View {
 
 	private static func sampleAttributedText() -> NSAttributedString {
 		let document = PromptDocument(segments: [
-			.text("Send a reminder to "),
-			.token(Token(kind: .variable, display: "team", metadata: ["key": "recipient"])),
-			.text(" about "),
-			.token(Token(kind: .fileMention, display: "Budget.xlsx", metadata: ["id": "file-1"])),
-			.text(" tomorrow.")
+			.text("Generate a high-resolution, professional headshot suitable for a corporate profile picture. The subject should be looking directly at the camera with a "),
+			.token(Token(kind: .variable, display: "confident", metadata: ["key": "expression"])),
+			.text(" expression. The lighting should be "),
+			.token(Token(kind: .variable, display: "soft and even", metadata: ["key": "lighting"])),
+			.text(", and the background should be a solid neutral color like "),
+			.token(Token(kind: .variable, display: "light gray", metadata: ["key": "backgroundColor"])),
+			.text(". The final image should be in a "),
+			.token(Token(kind: .variable, display: "realistic", metadata: ["key": "style"])),
+			.text(" style, suitable for "),
+			.token(Token(kind: .variable, display: "LinkedIn", metadata: ["key": "audience"])),
+			.text(".")
 		])
 		return document.buildAttributedString(
 			baseAttributes: [

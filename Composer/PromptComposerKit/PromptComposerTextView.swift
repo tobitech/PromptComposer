@@ -1,6 +1,83 @@
 import AppKit
 import Foundation
 
+private final class VariableTokenEditorFieldCell: NSTextFieldCell {
+	var horizontalPadding: CGFloat = TokenAttachmentCell.defaultHorizontalPadding
+	var verticalPadding: CGFloat = TokenAttachmentCell.defaultVerticalPadding
+
+	private func contentRect(for bounds: NSRect) -> NSRect {
+		NSRect(
+			x: bounds.origin.x + horizontalPadding,
+			y: bounds.origin.y + verticalPadding,
+			width: max(0, bounds.width - (horizontalPadding * 2)),
+			height: max(0, bounds.height - (verticalPadding * 2))
+		)
+	}
+
+	override func drawingRect(forBounds rect: NSRect) -> NSRect {
+		contentRect(for: rect)
+	}
+
+	override func titleRect(forBounds rect: NSRect) -> NSRect {
+		contentRect(for: rect)
+	}
+
+	override func edit(
+		withFrame rect: NSRect,
+		in controlView: NSView,
+		editor textObj: NSText,
+		delegate: Any?,
+		event: NSEvent?
+	) {
+		super.edit(
+			withFrame: contentRect(for: rect),
+			in: controlView,
+			editor: textObj,
+			delegate: delegate,
+			event: event
+		)
+	}
+
+	override func select(
+		withFrame rect: NSRect,
+		in controlView: NSView,
+		editor textObj: NSText,
+		delegate: Any?,
+		start selStart: Int,
+		length selLength: Int
+	) {
+		super.select(
+			withFrame: contentRect(for: rect),
+			in: controlView,
+			editor: textObj,
+			delegate: delegate,
+			start: selStart,
+			length: selLength
+		)
+	}
+}
+
+private final class VariableTokenEditorField: NSTextField {
+	override class var cellClass: AnyClass? {
+		get { VariableTokenEditorFieldCell.self }
+		set { super.cellClass = newValue }
+	}
+
+	private var tokenCell: VariableTokenEditorFieldCell? {
+		cell as? VariableTokenEditorFieldCell
+	}
+
+	var horizontalPadding: CGFloat {
+		get { tokenCell?.horizontalPadding ?? TokenAttachmentCell.defaultHorizontalPadding }
+		set { tokenCell?.horizontalPadding = newValue }
+	}
+
+	var verticalPadding: CGFloat {
+		get { tokenCell?.verticalPadding ?? TokenAttachmentCell.defaultVerticalPadding }
+		set { tokenCell?.verticalPadding = newValue }
+	}
+}
+
 final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 	var config: PromptComposerConfig = .init() {
 		didSet { applyConfig() }
@@ -16,24 +93,37 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 	private var activeVariableEditorContext: ActiveVariableEditorContext?
 	private var isCommittingVariableEdit = false
 	private var isTransitioningToVariableEditor = false
+	
+	private struct VariableEditorStyle {
+		let font: NSFont
+		let textColor: NSColor
+		let backgroundColor: NSColor
+		let horizontalPadding: CGFloat
+		let verticalPadding: CGFloat
+		let cornerRadius: CGFloat
+	}
 
-	private lazy var variableEditorField: NSTextField = {
-		let field = NSTextField()
+	private var activeVariableEditorStyle: VariableEditorStyle?
+
+	private lazy var variableEditorField: VariableTokenEditorField = {
+		let field = VariableTokenEditorField(frame: .zero)
 		field.isBordered = false
 		field.isBezeled = false
 		field.focusRingType = .none
-		field.drawsBackground = true
-		field.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18)
-		field.textColor = .labelColor
+		field.drawsBackground = false
+		field.backgroundColor = TokenAttachmentCell.defaultBackgroundColor(for: .variable)
+		field.textColor = NSColor.controlAccentColor
 		field.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
 		field.cell?.lineBreakMode = .byClipping
 		field.delegate = self
 		field.isHidden = true
+		field.horizontalPadding = TokenAttachmentCell.defaultHorizontalPadding
+		field.verticalPadding = TokenAttachmentCell.defaultVerticalPadding
 		field.wantsLayer = true
 		field.layer?.cornerRadius = TokenAttachmentCell.defaultCornerRadius
 		field.layer?.masksToBounds = true
-		field.layer?.borderWidth = 1
-		field.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor
+		field.layer?.borderWidth = 0
+		field.layer?.borderColor = nil
 		return field
 	}()
 
@@ -119,6 +209,18 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 			return
 		}
 
+		if
+			config.variableTokenTabNavigationEnabled,
+			event.keyCode == 48, // Tab
+			suggestionController?.isVisible != true,
+			activeVariableEditorContext == nil
+		{
+			let movesBackward = event.modifierFlags.contains(.shift)
+			if focusAdjacentVariableToken(fromLocation: selectedRange().location, forward: !movesBackward) {
+				return
+			}
+		}
+
 		if config.submitsOnEnter,
 			 event.keyCode == 36 /* Return */ || event.keyCode == 76 /* Numpad Enter */ {
 				 // Shift-Enter should insert a newline.
@@ -174,6 +276,14 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 
 	// MARK: - Token editing
 
+	@discardableResult
+	func focusFirstVariableTokenIfAvailable() -> Bool {
+		guard let storage = textStorage else { return false }
+		guard let firstRange = variableTokenRanges(in: storage).first else { return false }
+		beginVariableTokenEditing(at: firstRange.location, suggestedCellFrame: nil)
+		return true
+	}
+
 	func beginVariableTokenEditing(at charIndex: Int, suggestedCellFrame: NSRect?) {
 		guard let storage = textStorage, storage.length > 0 else { return }
 
@@ -194,8 +304,8 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		}
 
 		activeVariableEditorContext = context
-		configureVariableEditorField(for: context.token)
-		variableEditorField.stringValue = context.token.display
+		configureVariableEditorField(for: context.token, tokenRange: context.range)
+		variableEditorField.stringValue = variableEditorInitialValue(for: context.token)
 		if variableEditorField.superview !== self {
 			addSubview(variableEditorField)
 		}
@@ -233,15 +343,17 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		isCommittingVariableEdit = true
 		defer { isCommittingVariableEdit = false }
 
-		let rawDisplay = variableEditorField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-		let updatedDisplay = rawDisplay.isEmpty ? active.token.display : rawDisplay
-		let updatedToken = makeUpdatedVariableToken(from: active.token, display: updatedDisplay)
+		let rawDisplay = variableEditorField.stringValue
+		let updatedToken = makeUpdatedVariableToken(from: active.token, editedValue: rawDisplay)
 		replaceVariableToken(updatedToken, in: active.range)
 		hideVariableEditorField()
 		window?.makeFirstResponder(self)
 	}
 
 	func cancelVariableEditor() {
+		if let active = activeVariableEditorContext {
+			applyVariableTokenVisual(active.token, in: active.range)
+		}
 		hideVariableEditorField()
 	}
 
@@ -361,14 +473,155 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		return nil
 	}
 
-	private func configureVariableEditorField(for token: Token) {
-		let fallbackFont = font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-		let editorFont = (typingAttributes[.font] as? NSFont) ?? fallbackFont
-		let editorTextColor = (typingAttributes[.foregroundColor] as? NSColor) ?? textColor ?? .labelColor
+	private func variableTokenRanges(in textStorage: NSTextStorage) -> [NSRange] {
+		let fullRange = NSRange(location: 0, length: textStorage.length)
+		guard fullRange.length > 0 else { return [] }
 
-		variableEditorField.font = editorFont
-		variableEditorField.textColor = editorTextColor
-		variableEditorField.placeholderString = token.display.isEmpty ? "Variable" : nil
+		var ranges: [NSRange] = []
+		textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
+			guard range.length > 0 else { return }
+
+			if
+				let attachment = attributes[.attachment] as? TokenAttachment,
+				attachment.token.kind == .variable
+			{
+				ranges.append(range)
+				return
+			}
+
+			if
+				let tokenAttribute = attributes[.promptToken] as? PromptTokenAttribute,
+				tokenAttribute.token.kind == .variable
+			{
+				ranges.append(range)
+			}
+		}
+
+		return ranges.sorted { $0.location < $1.location }
+	}
+
+	private func focusAdjacentVariableToken(fromLocation location: Int, forward: Bool) -> Bool {
+		guard let textStorage else { return false }
+		let ranges = variableTokenRanges(in: textStorage)
+		guard !ranges.isEmpty else { return false }
+
+		let clampedLocation = min(max(0, location), textStorage.length)
+		let targetRange: NSRange?
+		if forward {
+			targetRange = ranges.first(where: { $0.location > clampedLocation }) ?? ranges.first
+		} else {
+			targetRange = ranges.last(where: { $0.location < clampedLocation }) ?? ranges.last
+		}
+
+		guard let targetRange else { return false }
+		beginVariableTokenEditing(at: targetRange.location, suggestedCellFrame: nil)
+		return true
+	}
+
+	private func configureVariableEditorField(for token: Token, tokenRange: NSRange) {
+		let style = resolvedVariableEditorStyle(for: token, tokenRange: tokenRange)
+		activeVariableEditorStyle = style
+		variableEditorField.font = style.font
+		variableEditorField.textColor = style.textColor
+		let opaqueBackground = opaqueEditorBackgroundColor(from: style.backgroundColor)
+		variableEditorField.backgroundColor = opaqueBackground
+		variableEditorField.layer?.backgroundColor = opaqueBackground.cgColor
+		variableEditorField.horizontalPadding = style.horizontalPadding
+		variableEditorField.verticalPadding = style.verticalPadding
+		variableEditorField.layer?.cornerRadius = style.cornerRadius
+		variableEditorField.placeholderString = variableEditorPlaceholderText(for: token)
+	}
+
+	private func resolvedVariableEditorStyle(for token: Token, tokenRange: NSRange) -> VariableEditorStyle {
+		let fallbackFont = font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+		let fallbackTextColor = preferredVariableEditorTextColor(
+			tokenTextColor: TokenAttachmentCell.defaultTextColor(for: token),
+			kind: token.kind
+		)
+		let fallbackBackgroundColor = TokenAttachmentCell.defaultBackgroundColor(for: token)
+		let defaultStyle = VariableEditorStyle(
+			font: (typingAttributes[.font] as? NSFont) ?? fallbackFont,
+			textColor: fallbackTextColor,
+			backgroundColor: fallbackBackgroundColor,
+			horizontalPadding: TokenAttachmentCell.defaultHorizontalPadding,
+			verticalPadding: TokenAttachmentCell.defaultVerticalPadding,
+			cornerRadius: TokenAttachmentCell.defaultCornerRadius
+		)
+
+		guard let textStorage, tokenRange.location < textStorage.length else { return defaultStyle }
+		guard let attachment = textStorage.attribute(.attachment, at: tokenRange.location, effectiveRange: nil) as? TokenAttachment,
+			let cell = attachment.attachmentCell as? TokenAttachmentCell
+		else {
+			return VariableEditorStyle(
+				font: defaultStyle.font,
+				textColor: fallbackTextColor,
+				backgroundColor: fallbackBackgroundColor,
+				horizontalPadding: defaultStyle.horizontalPadding,
+				verticalPadding: defaultStyle.verticalPadding,
+				cornerRadius: defaultStyle.cornerRadius
+			)
+		}
+
+		return VariableEditorStyle(
+			font: cell.tokenFont,
+			textColor: preferredVariableEditorTextColor(tokenTextColor: cell.textColor, kind: token.kind),
+			backgroundColor: cell.backgroundColor,
+			horizontalPadding: cell.horizontalPadding,
+			verticalPadding: cell.verticalPadding,
+			cornerRadius: cell.cornerRadius
+		)
+	}
+
+	private func opaqueEditorBackgroundColor(from tokenBackgroundColor: NSColor) -> NSColor {
+		if tokenBackgroundColor.alphaComponent >= 0.999 {
+			return resolvedColor(tokenBackgroundColor)
+		}
+
+		let compositionBase = opaqueEditorBaseColor()
+		guard
+			let tokenRGB = resolvedColor(tokenBackgroundColor).usingColorSpace(NSColorSpace.deviceRGB),
+			let editorBackgroundRGB = resolvedColor(compositionBase).usingColorSpace(NSColorSpace.deviceRGB)
+		else {
+			return tokenBackgroundColor
+		}
+
+		let alpha = tokenRGB.alphaComponent
+		let red = (tokenRGB.redComponent * alpha) + (editorBackgroundRGB.redComponent * (1 - alpha))
+		let green = (tokenRGB.greenComponent * alpha) + (editorBackgroundRGB.greenComponent * (1 - alpha))
+		let blue = (tokenRGB.blueComponent * alpha) + (editorBackgroundRGB.blueComponent * (1 - alpha))
+		return NSColor(deviceRed: red, green: green, blue: blue, alpha: 1)
+	}
+
+	private func opaqueEditorBaseColor() -> NSColor {
+		if backgroundColor.alphaComponent > 0.001 {
+			return backgroundColor
+		}
+		if let scrollBackground = enclosingScrollView?.backgroundColor, scrollBackground.alphaComponent > 0.001 {
+			return scrollBackground
+		}
+		return NSColor.textBackgroundColor
+	}
+
+	private func preferredVariableEditorTextColor(tokenTextColor: NSColor, kind: TokenKind) -> NSColor {
+		guard kind == .variable else { return tokenTextColor }
+		return NSColor.controlAccentColor
+	}
+
+	private func resolvedColor(_ color: NSColor) -> NSColor {
+		let previousAppearance = NSAppearance.current
+		NSAppearance.current = effectiveAppearance
+		defer { NSAppearance.current = previousAppearance }
+		return color.usingColorSpace(NSColorSpace.deviceRGB) ?? color
+	}
+
+	private func preferredVariableEditorWidth() -> CGFloat {
+		let font = variableEditorField.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+		let display = variableEditorField.stringValue.isEmpty
+			? (variableEditorField.placeholderString ?? " ")
+			: variableEditorField.stringValue
+		let textWidth = ceil((display as NSString).size(withAttributes: [.font: font]).width)
+		let horizontalPadding = variableEditorField.horizontalPadding
+		return textWidth + (horizontalPadding * 2)
 	}
 
 	private func positionVariableEditor(for tokenRange: NSRange, fallbackFrame: NSRect?) {
@@ -378,9 +631,16 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 			return
 		}
 
+		let style = activeVariableEditorStyle
 		frame = frame.integral
-		frame.size.width = max(44, frame.size.width)
-		frame.size.height = max(TokenAttachmentCell.lineHeight(for: config.font), frame.size.height)
+		frame.size.width = max(44, preferredVariableEditorWidth())
+		frame.size.height = max(
+			frame.size.height,
+			TokenAttachmentCell.lineHeight(
+				for: style?.font ?? config.font,
+				verticalPadding: style?.verticalPadding ?? TokenAttachmentCell.defaultVerticalPadding
+			)
+		)
 		variableEditorField.frame = frame
 	}
 
@@ -433,11 +693,68 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		return convert(windowRect, from: nil)
 	}
 
-	private func makeUpdatedVariableToken(from token: Token, display: String) -> Token {
+	private func variableEditorInitialValue(for token: Token) -> String {
+		guard token.kind == .variable else { return token.display }
+		if let value = TokenAttachmentCell.variableResolvedValue(for: token) {
+			return value
+		}
+		return ""
+	}
+
+	private func variableEditorPlaceholderText(for token: Token) -> String? {
+		guard token.kind == .variable else { return nil }
+		return TokenAttachmentCell.variablePlaceholderText(for: token) ?? "Variable"
+	}
+
+	private func makeUpdatedVariableToken(from token: Token, editedValue: String) -> Token {
 		var updated = token
-		updated.display = display
-		updated.metadata["value"] = display
+		let trimmed = editedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+		guard token.kind == .variable else {
+			updated.display = trimmed.isEmpty ? token.display : trimmed
+			return updated
+		}
+
+		if !trimmed.isEmpty {
+			updated.display = trimmed
+			updated.metadata["value"] = trimmed
+			return updated
+		}
+
+		updated.metadata.removeValue(forKey: "value")
+		if let placeholder = TokenAttachmentCell.variablePlaceholderText(for: token) {
+			updated.display = placeholder
+		}
 		return updated
+	}
+
+	private func applyVariableTokenVisual(_ token: Token, in range: NSRange) {
+		guard let textStorage, textStorage.length > 0 else { return }
+		let clampedRange = clampRange(range, length: textStorage.length)
+		guard clampedRange.length > 0, clampedRange.location < textStorage.length else { return }
+
+		let tokenFont: NSFont = {
+			let attributes = textStorage.attributes(at: clampedRange.location, effectiveRange: nil)
+			return (attributes[.font] as? NSFont) ?? config.font
+		}()
+
+		if let attachment = textStorage.attribute(.attachment, at: clampedRange.location, effectiveRange: nil) as? TokenAttachment {
+			attachment.attachmentCell = TokenAttachmentCell(
+				token: token,
+				font: tokenFont
+			)
+			textStorage.edited(.editedAttributes, range: clampedRange, changeInLength: 0)
+			return
+		}
+
+		if textStorage.attribute(.promptToken, at: clampedRange.location, effectiveRange: nil) is PromptTokenAttribute {
+			textStorage.addAttribute(
+				.promptToken,
+				value: PromptTokenAttribute(token: token),
+				range: clampedRange
+			)
+			textStorage.edited(.editedAttributes, range: clampedRange, changeInLength: 0)
+		}
 	}
 
 	private func replaceVariableToken(_ token: Token, in range: NSRange) {
@@ -450,13 +767,11 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 
 		let currentAttributes = textStorage.attributes(at: tokenRange.location, effectiveRange: nil)
 		let tokenFont = (currentAttributes[.font] as? NSFont) ?? config.font
-		let tokenTextColor = (currentAttributes[.foregroundColor] as? NSColor) ?? config.textColor
 
 		let attachment = TokenAttachment(token: token)
 		attachment.attachmentCell = TokenAttachmentCell(
 			token: token,
-			font: tokenFont,
-			textColor: tokenTextColor
+			font: tokenFont
 		)
 
 		let replacement = NSMutableAttributedString(attachment: attachment)
@@ -479,6 +794,7 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 
 	private func hideVariableEditorField() {
 		activeVariableEditorContext = nil
+		activeVariableEditorStyle = nil
 		variableEditorField.isHidden = true
 		variableEditorField.stringValue = ""
 	}
@@ -488,7 +804,19 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		isTransitioningToVariableEditor = true
 		defer { isTransitioningToVariableEditor = false }
 		guard window.makeFirstResponder(variableEditorField) else { return }
-		variableEditorField.currentEditor()?.selectAll(nil)
+		if let editor = window.fieldEditor(true, for: variableEditorField) as? NSTextView {
+			editor.insertionPointColor = NSColor.controlAccentColor
+			editor.drawsBackground = false
+			editor.backgroundColor = .clear
+			editor.selectedTextAttributes = [
+				.foregroundColor: variableEditorField.textColor ?? NSColor.labelColor,
+				.backgroundColor: NSColor.clear
+			]
+		}
+		if let editor = variableEditorField.currentEditor() as? NSTextView {
+			let caret = (variableEditorField.stringValue as NSString).length
+			editor.setSelectedRange(NSRange(location: caret, length: 0))
+		}
 	}
 
 	private func expandedTokenRange(for range: NSRange, in textStorage: NSTextStorage) -> NSRange {
@@ -521,9 +849,13 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 
 	func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
 		switch commandSelector {
-		case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+		case #selector(NSResponder.insertNewline(_:)):
 			commitVariableEditorChanges()
 			return true
+		case #selector(NSResponder.insertTab(_:)):
+			return handleVariableEditorTabNavigation(forward: true)
+		case #selector(NSResponder.insertBacktab(_:)):
+			return handleVariableEditorTabNavigation(forward: false)
 		case #selector(NSResponder.cancelOperation(_:)):
 			cancelVariableEditor()
 			window?.makeFirstResponder(self)
@@ -533,8 +865,33 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		}
 	}
 
+	func controlTextDidChange(_ obj: Notification) {
+		if let active = activeVariableEditorContext {
+			let previewToken = makeUpdatedVariableToken(
+				from: active.token,
+				editedValue: variableEditorField.stringValue
+			)
+			applyVariableTokenVisual(previewToken, in: active.range)
+		}
+		refreshVariableEditorLayoutIfNeeded()
+	}
+
 	func controlTextDidEndEditing(_ obj: Notification) {
 		guard activeVariableEditorContext != nil else { return }
 		commitVariableEditorChanges()
+	}
+
+	private func handleVariableEditorTabNavigation(forward: Bool) -> Bool {
+		guard config.variableTokenTabNavigationEnabled else {
+			commitVariableEditorChanges()
+			return true
+		}
+		guard let active = activeVariableEditorContext else {
+			return focusAdjacentVariableToken(fromLocation: selectedRange().location, forward: forward)
+		}
+
+		let currentLocation = active.range.location
+		commitVariableEditorChanges()
+		return focusAdjacentVariableToken(fromLocation: currentLocation, forward: forward)
 	}
 }

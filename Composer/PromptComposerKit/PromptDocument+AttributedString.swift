@@ -76,7 +76,6 @@ public extension PromptDocument {
 	) -> NSAttributedString {
 		let output = NSMutableAttributedString()
 		let tokenFont = (baseAttributes[.font] as? NSFont) ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-		let tokenTextColor = (baseAttributes[.foregroundColor] as? NSColor) ?? .labelColor
 
 		for segment in segments {
 			switch segment {
@@ -88,8 +87,7 @@ public extension PromptDocument {
 					let attachment = TokenAttachment(token: token)
 					attachment.attachmentCell = TokenAttachmentCell(
 						token: token,
-						font: tokenFont,
-						textColor: tokenTextColor
+						font: tokenFont
 					)
 					let attributed = NSMutableAttributedString(attachment: attachment)
 					if !baseAttributes.isEmpty {

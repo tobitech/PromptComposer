@@ -69,6 +69,10 @@ Goal: Build a high-performance, fully-editable macOS prompt composer (NSTextView
       - Expected: editor closes, pill label updates, and caret returns to the composer.
     - [ ] Type a new value and press `Tab`.
       - Expected: same as `Return` (commit + close).
+    - [ ] While editing a variable token, press `Tab` repeatedly.
+      - Expected: focus cycles forward through variable tokens and wraps to the first token.
+    - [ ] While editing a variable token, press `Shift-Tab`.
+      - Expected: focus cycles backward through variable tokens and wraps to the last token.
     - [ ] Start editing, then press `Esc`.
       - Expected: editor closes without changing the pill text.
     - [ ] Start editing, then click elsewhere in the composer.

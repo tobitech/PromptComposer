@@ -41,6 +41,12 @@ public struct PromptComposerView: NSViewRepresentable {
 		context.coordinator.textView = textView
 		scrollView.updateHeight()
 
+		if config.autoFocusFirstVariableTokenOnAppear {
+			DispatchQueue.main.async { [weak textView] in
+				_ = textView?.focusFirstVariableTokenIfAvailable()
+			}
+		}
+
 		return scrollView
 	}
 
@@ -305,15 +311,11 @@ public struct PromptComposerView: NSViewRepresentable {
 			let tokenFont = (typingAttributes[.font] as? NSFont)
 				?? textView.font
 				?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-			let tokenTextColor = (typingAttributes[.foregroundColor] as? NSColor)
-				?? textView.textColor
-				?? .labelColor
 
 			let attachment = TokenAttachment(token: token)
 			attachment.attachmentCell = TokenAttachmentCell(
 				token: token,
-				font: tokenFont,
-				textColor: tokenTextColor
+				font: tokenFont
 			)
 
 			let replacement = NSMutableAttributedString(attachment: attachment)
@@ -352,15 +354,11 @@ public struct PromptComposerView: NSViewRepresentable {
 			let tokenFont = (typingAttributes[.font] as? NSFont)
 				?? textView.font
 				?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-			let tokenTextColor = (typingAttributes[.foregroundColor] as? NSColor)
-				?? textView.textColor
-				?? .labelColor
 
 			let attachment = TokenAttachment(token: token)
 			attachment.attachmentCell = TokenAttachmentCell(
 				token: token,
-				font: tokenFont,
-				textColor: tokenTextColor
+				font: tokenFont
 			)
 
 			let replacement = NSMutableAttributedString(attachment: attachment)

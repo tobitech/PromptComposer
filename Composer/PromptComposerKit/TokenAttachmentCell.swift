@@ -5,6 +5,86 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 	nonisolated static let defaultVerticalPadding: CGFloat = 2
 	nonisolated static let defaultCornerRadius: CGFloat = 6
 
+	nonisolated private static func trimmedNonEmpty(_ value: String?) -> String? {
+		guard let value else { return nil }
+		let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+		return trimmed.isEmpty ? nil : trimmed
+	}
+
+	nonisolated static func variablePlaceholderText(for token: Token) -> String? {
+		guard token.kind == .variable else { return nil }
+		return trimmedNonEmpty(token.metadata["placeholder"])
+			?? trimmedNonEmpty(token.metadata["key"])
+	}
+
+	nonisolated static func variableResolvedValue(for token: Token) -> String? {
+		guard token.kind == .variable else { return nil }
+		if let explicitValue = trimmedNonEmpty(token.metadata["value"]) {
+			return explicitValue
+		}
+
+		guard let display = trimmedNonEmpty(token.display) else { return nil }
+		if let placeholder = variablePlaceholderText(for: token), placeholder == display {
+			return nil
+		}
+		return display
+	}
+
+	nonisolated static func variableDisplayText(for token: Token) -> String {
+		if let value = variableResolvedValue(for: token) {
+			return value
+		}
+		if let placeholder = variablePlaceholderText(for: token) {
+			return placeholder
+		}
+		return "variable"
+	}
+
+	nonisolated static func isVariableResolved(_ token: Token) -> Bool {
+		variableResolvedValue(for: token) != nil
+	}
+
+	nonisolated static func defaultTextColor(for kind: TokenKind) -> NSColor {
+		switch kind {
+		case .variable:
+			return .secondaryLabelColor
+		case .fileMention, .command:
+			return .labelColor
+		}
+	}
+
+	nonisolated static func defaultTextColor(for token: Token) -> NSColor {
+		switch token.kind {
+		case .variable:
+			return isVariableResolved(token) ? .controlAccentColor : .secondaryLabelColor
+		case .fileMention, .command:
+			return .labelColor
+		}
+	}
+
+	nonisolated static func defaultBackgroundColor(for kind: TokenKind) -> NSColor {
+		switch kind {
+		case .variable:
+			return NSColor.controlAccentColor.withAlphaComponent(0.14)
+		case .fileMention:
+			return NSColor.controlAccentColor.withAlphaComponent(0.2)
+		case .command:
+			return NSColor.controlAccentColor.withAlphaComponent(0.17)
+		}
+	}
+
+	nonisolated static func defaultBackgroundColor(for token: Token) -> NSColor {
+		switch token.kind {
+		case .variable:
+			let alpha: CGFloat = isVariableResolved(token) ? 0.2 : 0.14
+			return NSColor.controlAccentColor.withAlphaComponent(alpha)
+		case .fileMention:
+			return NSColor.controlAccentColor.withAlphaComponent(0.2)
+		case .command:
+			return NSColor.controlAccentColor.withAlphaComponent(0.17)
+		}
+	}
+
 	nonisolated static func lineHeight(
 		for font: NSFont,
 		verticalPadding: CGFloat = defaultVerticalPadding
@@ -24,16 +104,16 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 	init(
 		token: Token,
 		font: NSFont,
-		textColor: NSColor = .labelColor,
-		backgroundColor: NSColor = NSColor.controlAccentColor.withAlphaComponent(0.18),
+		textColor: NSColor? = nil,
+		backgroundColor: NSColor? = nil,
 		horizontalPadding: CGFloat = TokenAttachmentCell.defaultHorizontalPadding,
 		verticalPadding: CGFloat = TokenAttachmentCell.defaultVerticalPadding,
 		cornerRadius: CGFloat = TokenAttachmentCell.defaultCornerRadius
 	) {
 		self.token = token
 		self.tokenFont = font
-		self.textColor = textColor
-		self.backgroundColor = backgroundColor
+		self.textColor = textColor ?? Self.defaultTextColor(for: token)
+		self.backgroundColor = backgroundColor ?? Self.defaultBackgroundColor(for: token)
 		self.horizontalPadding = horizontalPadding
 		self.verticalPadding = verticalPadding
 		self.cornerRadius = cornerRadius
@@ -43,8 +123,8 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 	required init(coder: NSCoder) {
 		self.token = Token(kind: .variable, display: "", metadata: [:])
 		self.tokenFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-		self.textColor = .labelColor
-		self.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18)
+		self.textColor = Self.defaultTextColor(for: .variable)
+		self.backgroundColor = Self.defaultBackgroundColor(for: .variable)
 		self.horizontalPadding = TokenAttachmentCell.defaultHorizontalPadding
 		self.verticalPadding = 0
 		self.cornerRadius = TokenAttachmentCell.defaultCornerRadius
@@ -52,7 +132,14 @@ final class TokenAttachmentCell: NSTextAttachmentCell {
 	}
 
 	nonisolated var displayText: String {
-		token.display.isEmpty ? "Token" : token.display
+		switch token.kind {
+		case .variable:
+			return Self.variableDisplayText(for: token)
+		case .fileMention:
+			return token.display.isEmpty ? "file" : token.display
+		case .command:
+			return token.display.isEmpty ? "command" : token.display
+		}
 	}
 
 	nonisolated override func cellSize() -> NSSize {
