@@ -42,11 +42,15 @@ struct PromptComposerDemoView: View {
 		.padding()
 	}
 
-	private func handleSuggestionSelection(_ suggestion: PromptSuggestion) {
+	private func handleSuggestionSelection(
+		_ suggestion: PromptSuggestion
+	) {
 		print("Selected suggestion: \(suggestion.title)")
 	}
 
-	private func handleCommandExecution(_ command: PromptCommand) {
+	private func handleCommandExecution(
+		_ command: PromptCommand
+	) {
 		print("Executed command: /\(command.keyword)")
 	}
 
