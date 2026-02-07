@@ -7,7 +7,11 @@ extension PromptComposerTextView {
 		switch commandSelector {
 		case #selector(NSResponder.moveRight(_:)):
 			movingForward = true
+		case #selector(NSResponder.moveForward(_:)):
+			movingForward = true
 		case #selector(NSResponder.moveLeft(_:)):
+			movingForward = false
+		case #selector(NSResponder.moveBackward(_:)):
 			movingForward = false
 		default:
 			return false
@@ -25,25 +29,35 @@ extension PromptComposerTextView {
 
 		let textLength = textStorage.length
 		let caretLocation = min(max(0, selection.location), textLength)
-		let candidateLocation: Int
-
+		let candidateLocations: [Int]
 		if movingForward {
 			guard caretLocation < textLength else { return false }
-			candidateLocation = caretLocation
+			// Check both the immediate crossing index and the next index to avoid
+			// boundary-skip cases when caret movement is snapped around token ranges.
+			let nextLocation = caretLocation + 1
+			if nextLocation < textLength {
+				candidateLocations = [caretLocation, nextLocation]
+			} else {
+				candidateLocations = [caretLocation]
+			}
 		} else {
 			guard caretLocation > 0 else { return false }
-			candidateLocation = caretLocation - 1
+			candidateLocations = [caretLocation - 1]
 		}
 
-		guard
-			let context = variableTokenContext(containing: candidateLocation, in: textStorage),
-			!TokenAttachmentCell.isVariableResolved(context.token)
-		else {
-			return false
+		for candidateLocation in candidateLocations {
+			guard
+				let context = variableTokenContext(containing: candidateLocation, in: textStorage),
+				!TokenAttachmentCell.isVariableResolved(context.token)
+			else {
+				continue
+			}
+
+			beginVariableTokenEditing(at: context.range.location, suggestedCellFrame: nil)
+			return true
 		}
 
-		beginVariableTokenEditing(at: context.range.location, suggestedCellFrame: nil)
-		return true
+		return false
 	}
 
 	func adjustedSelectionRange(from oldRange: NSRange, to proposedRange: NSRange) -> NSRange {
