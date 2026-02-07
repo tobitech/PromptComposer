@@ -119,7 +119,7 @@ public struct PromptComposerConfig {
 	public var isEditable: Bool = true
 	public var isSelectable: Bool = true
 	
-	public var font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
+	public var font: NSFont = .preferredFont(forTextStyle: .title3)
 	public var textColor: NSColor = .labelColor
 	
 	public var backgroundColor: NSColor = .clear

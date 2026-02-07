@@ -53,19 +53,19 @@ public struct PromptComposerView: NSViewRepresentable {
 	public func updateNSView(_ nsView: PromptComposerScrollView, context: Context) {
 		let textView = nsView.textView
 
-		// Apply config changes if the struct changes.
-		textView.config = config
-		nsView.applyConfig(config)
-
 		// Avoid feedback loops when we're pushing state into AppKit.
 		context.coordinator.isApplyingSwiftUIUpdate = true
 		defer { context.coordinator.isApplyingSwiftUIUpdate = false }
 
-		// Only update if the content actually differs.
-		let current = textView.attributedString()
-		if !current.isEqual(to: state.attributedText) {
+		// Sync content from state first. Compare string content only so that
+		// attribute-level changes from applyConfig (font, color) are not overwritten.
+		if textView.string != state.attributedText.string {
 			textView.textStorage?.setAttributedString(state.attributedText)
 		}
+
+		// Apply config after text sync so font/token updates apply to current content.
+		textView.config = config
+		nsView.applyConfig(config)
 
 		let currentSelection = textView.selectedRange()
 		if currentSelection.location != state.selectedRange.location

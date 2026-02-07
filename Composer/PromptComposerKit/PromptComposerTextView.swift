@@ -113,6 +113,23 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 			.paragraphStyle: paragraphStyle,
 		]
 
+		// Apply font, color, and paragraph style to all existing text and token attachments.
+		font = config.font
+		if let textStorage, textStorage.length > 0 {
+			let fullRange = NSRange(location: 0, length: textStorage.length)
+			textStorage.addAttribute(.font, value: config.font, range: fullRange)
+			textStorage.addAttribute(.foregroundColor, value: config.textColor, range: fullRange)
+			textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+
+			textStorage.enumerateAttribute(.attachment, in: fullRange, options: []) { value, _, _ in
+				guard let attachment = value as? TokenAttachment else { return }
+				attachment.attachmentCell = TokenAttachmentCell(
+					token: attachment.token,
+					font: config.font
+				)
+			}
+		}
+
 		textLayoutManager?.usesFontLeading = false
 		layoutManager?.usesFontLeading = false
 
