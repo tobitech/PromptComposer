@@ -88,10 +88,10 @@ Goal: Build a high-performance, fully-editable macOS prompt composer (NSTextView
     - [ ] Perform `Undo` then `Redo` after a committed edit.
       - Expected: token display change reverses and reapplies correctly.
 
-- [ ] Step 10 — Serialization (import/export)
+- [x] Step 10 — Serialization (import/export) ✅
   - Export tokens as placeholders: `{{var}}` and `@{file:uuid|name}`.
   - Parse placeholders back into tokens.
-  - Decide how to handle unknown tokens.
+  - Decide how to handle unknown tokens. (Preserve unknown/malformed placeholders as literal text by default.)
   - Done when: round-trip persists tokens intact.
 
 ## Phase 4 — Polishing + performance

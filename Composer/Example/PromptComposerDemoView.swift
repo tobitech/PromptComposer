@@ -24,15 +24,14 @@ struct PromptComposerDemoView: View {
 		config.commands = Self.sampleCommands()
 		config.onSuggestionSelected = handleSuggestionSelection
 		config.onCommandExecuted = handleCommandExecution
-		config.onSubmit = handleSubmit
 		return config
 	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
-			Text("Plain string preview:")
+			Text("Placeholder export preview:")
 				.font(.headline)
-			Text(state.attributedText.string)
+			Text(exportedPlaceholderText)
 				.textSelection(.enabled)
 				.frame(maxWidth: .infinity, alignment: .leading)
 
@@ -55,9 +54,9 @@ struct PromptComposerDemoView: View {
 		print("Executed command: /\(command.keyword)")
 	}
 
-	private func handleSubmit() {
-		// In Step 1 we just print; later we’ll expose a structured document model.
-		print("Submit: \(state.attributedText.string)")
+	private var exportedPlaceholderText: String {
+		let document = PromptDocument.extractDocument(from: state.attributedText)
+		return document.exportPlaceholders()
 	}
 
 	private static func sampleAttributedText() -> NSAttributedString {
