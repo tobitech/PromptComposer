@@ -101,7 +101,7 @@ public struct PromptComposerConfig {
 	/// Slash-command definitions used when `/` is active (Step 8).
 	public var commands: [PromptCommand] = []
 
-	/// Enables Tab / Shift-Tab navigation across variable tokens.
+	/// Enables Tab / Shift-Tab navigation across inline tokens.
 	public var variableTokenTabNavigationEnabled: Bool = true
 
 	/// Focuses the first variable token when the editor first appears.

@@ -96,8 +96,8 @@ Goal: Build a high-performance, fully-editable macOS prompt composer (NSTextView
 
 ## Phase 4 — Polishing + performance
 
-- [ ] Step 11 — Accessibility + keyboard polish
-  - Tab/shift-tab across tokens (optional).
+- [x] Step 11 — Accessibility + keyboard polish ✅
+  - Tab/shift-tab across tokens.
   - Enter-to-submit vs shift-enter newline.
   - VoiceOver labels for tokens and suggestions.
   - Done when: fully operable without mouse and screen-reader friendly.
@@ -107,9 +107,3 @@ Goal: Build a high-performance, fully-editable macOS prompt composer (NSTextView
   - Avoid full-document retokenization per keystroke.
   - Cache token measurements.
   - Done when: large documents remain smooth.
-
-## Suggested slice to implement first
-
-1. Step 1 (SwiftUI wrapper)
-2. Step 2 (TextKit 2 setup)
-3. Step 4 (basic attachment tokens)

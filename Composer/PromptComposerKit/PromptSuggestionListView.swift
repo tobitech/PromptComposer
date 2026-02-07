@@ -141,6 +141,9 @@ struct PromptSuggestionListView: View {
 		.background(panelBackground)
 		.clipShape(panelShape)
 		.overlay(panelBorder)
+		.accessibilityElement(children: .contain)
+		.accessibilityLabel("Suggestions")
+		.accessibilityHint("Use up and down arrows to move through suggestions, then press Return to select.")
 	}
 }
 
@@ -164,6 +167,7 @@ private struct PromptSuggestionSectionView: View {
 				Text(title)
 					.font(titleFont)
 					.foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+					.accessibilityAddTraits(.isHeader)
 			}
 
 			VStack(spacing: 0) {
@@ -189,6 +193,31 @@ private struct PromptSuggestionRowButton: View {
 	let showsDivider: Bool
 	let onSelect: (PromptSuggestionIndexedItem) -> Void
 
+	private var kindLabel: String {
+		switch indexed.item.kind {
+		case .variable?:
+			return "Variable suggestion"
+		case .fileMention?:
+			return "File suggestion"
+		case .command?:
+			return "Command suggestion"
+		case nil:
+			return "Suggestion"
+		}
+	}
+
+	private var accessibilityLabelText: String {
+		var parts = [kindLabel, indexed.item.title]
+		if let subtitle = indexed.item.subtitle, !subtitle.isEmpty {
+			parts.append(subtitle)
+		}
+		return parts.joined(separator: ", ")
+	}
+
+	private var accessibilityHintText: String {
+		"Press Return to select this suggestion."
+	}
+
 	var body: some View {
 		Button {
 			onSelect(indexed)
@@ -205,6 +234,10 @@ private struct PromptSuggestionRowButton: View {
 				.overlay(Color(nsColor: .separatorColor).opacity(0.5))
 				.opacity(showsDivider ? 1 : 0)
 		}
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(accessibilityLabelText)
+		.accessibilityHint(accessibilityHintText)
+		.accessibilityAddTraits(isSelected ? .isSelected : [])
 	}
 }
 

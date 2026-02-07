@@ -90,6 +90,11 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		let token: Token
 	}
 
+	private struct TokenContext {
+		let range: NSRange
+		let token: Token
+	}
+
 	private var activeVariableEditorContext: ActiveVariableEditorContext?
 	private var isCommittingVariableEdit = false
 	private var isTransitioningToVariableEditor = false
@@ -190,6 +195,12 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		// Improve selection/caret behaviour in embedding contexts.
 		usesFindBar = false
 		isIncrementalSearchingEnabled = false
+		setAccessibilityLabel("Prompt composer")
+		setAccessibilityHelp(
+			config.submitsOnEnter
+				? "Press Return to submit and Shift-Return for a new line. Use Tab or Shift-Tab to navigate tokens."
+				: "Use Tab or Shift-Tab to navigate tokens."
+		)
 
 		// Optional submit-on-enter behaviour.
 		setUpSubmitKeyHandlingIfNeeded()
@@ -216,21 +227,23 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 			activeVariableEditorContext == nil
 		{
 			let movesBackward = event.modifierFlags.contains(.shift)
-			if focusAdjacentVariableToken(fromLocation: selectedRange().location, forward: !movesBackward) {
+			if focusAdjacentToken(from: selectedRange(), forward: !movesBackward) {
 				return
 			}
 		}
 
-		if config.submitsOnEnter,
-			 event.keyCode == 36 /* Return */ || event.keyCode == 76 /* Numpad Enter */ {
-				 // Shift-Enter should insert a newline.
-				 if event.modifierFlags.contains(.shift) {
-					 super.keyDown(with: event)
-					 return
-				 }
-				 
-				 config.onSubmit?()
-				 return
+		if
+			config.submitsOnEnter,
+			event.keyCode == 36 /* Return */ || event.keyCode == 76 /* Numpad Enter */
+		{
+			// Shift-Enter should insert a newline.
+			if event.modifierFlags.contains(.shift) {
+				super.keyDown(with: event)
+				return
+			}
+
+			config.onSubmit?()
+			return
 		}
 		
 		super.keyDown(with: event)
@@ -433,16 +446,23 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 	}
 
 	private func tokenRange(containing location: Int, in textStorage: NSTextStorage) -> NSRange? {
+		tokenContext(containing: location, in: textStorage)?.range
+	}
+
+	private func tokenContext(
+		containing location: Int,
+		in textStorage: NSTextStorage
+	) -> TokenContext? {
 		guard location >= 0, location < textStorage.length else { return nil }
 
 		var effectiveRange = NSRange(location: 0, length: 0)
 
-		if textStorage.attribute(.attachment, at: location, effectiveRange: &effectiveRange) is TokenAttachment {
-			return effectiveRange
+		if let attachment = textStorage.attribute(.attachment, at: location, effectiveRange: &effectiveRange) as? TokenAttachment {
+			return TokenContext(range: effectiveRange, token: attachment.token)
 		}
 
-		if textStorage.attribute(.promptToken, at: location, effectiveRange: &effectiveRange) is PromptTokenAttribute {
-			return effectiveRange
+		if let tokenAttribute = textStorage.attribute(.promptToken, at: location, effectiveRange: &effectiveRange) as? PromptTokenAttribute {
+			return TokenContext(range: effectiveRange, token: tokenAttribute.token)
 		}
 
 		return nil
@@ -452,70 +472,90 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		containing location: Int,
 		in textStorage: NSTextStorage
 	) -> ActiveVariableEditorContext? {
-		guard location >= 0, location < textStorage.length else { return nil }
-
-		var effectiveRange = NSRange(location: 0, length: 0)
-
-		if
-			let attachment = textStorage.attribute(.attachment, at: location, effectiveRange: &effectiveRange) as? TokenAttachment,
-			attachment.token.kind == .variable
-		{
-			return ActiveVariableEditorContext(range: effectiveRange, token: attachment.token)
+		guard
+			let context = tokenContext(containing: location, in: textStorage),
+			context.token.kind == .variable
+		else {
+			return nil
 		}
-
-		if
-			let tokenAttribute = textStorage.attribute(.promptToken, at: location, effectiveRange: &effectiveRange) as? PromptTokenAttribute,
-			tokenAttribute.token.kind == .variable
-		{
-			return ActiveVariableEditorContext(range: effectiveRange, token: tokenAttribute.token)
-		}
-
-		return nil
+		return ActiveVariableEditorContext(range: context.range, token: context.token)
 	}
 
-	private func variableTokenRanges(in textStorage: NSTextStorage) -> [NSRange] {
+	private func tokenContexts(in textStorage: NSTextStorage) -> [TokenContext] {
 		let fullRange = NSRange(location: 0, length: textStorage.length)
 		guard fullRange.length > 0 else { return [] }
 
-		var ranges: [NSRange] = []
+		var contexts: [TokenContext] = []
 		textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
 			guard range.length > 0 else { return }
 
-			if
-				let attachment = attributes[.attachment] as? TokenAttachment,
-				attachment.token.kind == .variable
-			{
-				ranges.append(range)
+			if let attachment = attributes[.attachment] as? TokenAttachment {
+				contexts.append(TokenContext(range: range, token: attachment.token))
 				return
 			}
 
-			if
-				let tokenAttribute = attributes[.promptToken] as? PromptTokenAttribute,
-				tokenAttribute.token.kind == .variable
-			{
-				ranges.append(range)
+			if let tokenAttribute = attributes[.promptToken] as? PromptTokenAttribute {
+				contexts.append(TokenContext(range: range, token: tokenAttribute.token))
 			}
 		}
 
-		return ranges.sorted { $0.location < $1.location }
+		return contexts.sorted { $0.range.location < $1.range.location }
 	}
 
-	private func focusAdjacentVariableToken(fromLocation location: Int, forward: Bool) -> Bool {
-		guard let textStorage else { return false }
-		let ranges = variableTokenRanges(in: textStorage)
-		guard !ranges.isEmpty else { return false }
+	private func variableTokenRanges(in textStorage: NSTextStorage) -> [NSRange] {
+		tokenContexts(in: textStorage)
+			.filter { $0.token.kind == .variable }
+			.map(\.range)
+	}
 
-		let clampedLocation = min(max(0, location), textStorage.length)
-		let targetRange: NSRange?
-		if forward {
-			targetRange = ranges.first(where: { $0.location > clampedLocation }) ?? ranges.first
+	private func focusAdjacentToken(from selection: NSRange, forward: Bool) -> Bool {
+		guard let textStorage else { return false }
+		let contexts = tokenContexts(in: textStorage)
+		guard !contexts.isEmpty else { return false }
+
+		let clampedSelection = clampRange(selection, length: textStorage.length)
+		let selectedIndex = selectedTokenContextIndex(in: contexts, selection: clampedSelection)
+		let targetContext: TokenContext
+
+		if let selectedIndex {
+			let offset = forward ? 1 : -1
+			let wrappedIndex = ((selectedIndex + offset) % contexts.count + contexts.count) % contexts.count
+			targetContext = contexts[wrappedIndex]
+		} else if forward {
+			targetContext = contexts.first(where: { $0.range.location > clampedSelection.location }) ?? contexts[0]
 		} else {
-			targetRange = ranges.last(where: { $0.location < clampedLocation }) ?? ranges.last
+			targetContext = contexts.last(where: { ($0.range.location + $0.range.length) < clampedSelection.location })
+				?? contexts[contexts.count - 1]
 		}
 
-		guard let targetRange else { return false }
-		beginVariableTokenEditing(at: targetRange.location, suggestedCellFrame: nil)
+		switch targetContext.token.kind {
+		case .variable:
+			beginVariableTokenEditing(at: targetContext.range.location, suggestedCellFrame: nil)
+		case .fileMention, .command:
+			setSelectedRange(targetContext.range)
+			scrollRangeToVisible(targetContext.range)
+		}
 		return true
+	}
+
+	private func selectedTokenContextIndex(
+		in contexts: [TokenContext],
+		selection: NSRange
+	) -> Int? {
+		if let explicitSelectionMatch = contexts.firstIndex(where: { $0.range == selection }) {
+			return explicitSelectionMatch
+		}
+
+		guard selection.length == 0 else { return nil }
+		guard let textStorage else { return nil }
+
+		let caretLocation = min(max(0, selection.location), textStorage.length)
+		if let containingCaret = contexts.firstIndex(where: { NSLocationInRange(caretLocation, $0.range) }) {
+			return containingCaret
+		}
+		guard caretLocation > 0 else { return nil }
+		let previousLocation = caretLocation - 1
+		return contexts.firstIndex(where: { NSLocationInRange(previousLocation, $0.range) })
 	}
 
 	private func configureVariableEditorField(for token: Token, tokenRange: NSRange) {
@@ -542,6 +582,10 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 			variableEditorField.placeholderString = nil
 			variableEditorField.placeholderAttributedString = nil
 		}
+		variableEditorField.setAccessibilityLabel(variableEditorAccessibilityLabel(for: token))
+		variableEditorField.setAccessibilityHelp(
+			"Edit variable value. Press Return to save, Tab to move to another token, or Escape to cancel."
+		)
 	}
 
 	private func resolvedVariableEditorStyle(for token: Token, tokenRange: NSRange) -> VariableEditorStyle {
@@ -859,6 +903,83 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		return NSRange(location: clampedLocation, length: clampedLength)
 	}
 
+	private func variableEditorAccessibilityLabel(for token: Token) -> String {
+		if let placeholder = TokenAttachmentCell.variablePlaceholderText(for: token) {
+			return "Edit \(placeholder) variable"
+		}
+		return "Edit variable"
+	}
+
+	private func tokenFromAttributes(_ attributes: [NSAttributedString.Key: Any]) -> Token? {
+		if let attachment = attributes[.attachment] as? TokenAttachment {
+			return attachment.token
+		}
+		if let tokenAttribute = attributes[.promptToken] as? PromptTokenAttribute {
+			return tokenAttribute.token
+		}
+		return nil
+	}
+
+	private func tokenAccessibilityLabel(for token: Token) -> String {
+		switch token.kind {
+		case .variable:
+			let placeholder = TokenAttachmentCell.variablePlaceholderText(for: token)
+			let value = TokenAttachmentCell.variableResolvedValue(for: token)
+			if let placeholder, let value {
+				return "Variable \(placeholder): \(value)"
+			}
+			if let value {
+				return "Variable \(value)"
+			}
+			if let placeholder {
+				return "Variable \(placeholder), empty"
+			}
+			return "Variable token"
+		case .fileMention:
+			let label = token.display.isEmpty ? "file" : token.display
+			return "File \(label)"
+		case .command:
+			let label = token.display.isEmpty ? "command" : token.display
+			return "Command \(label)"
+		}
+	}
+
+	override func accessibilityString(for range: NSRange) -> String? {
+		guard let textStorage, textStorage.length > 0 else {
+			return super.accessibilityString(for: range)
+		}
+
+		let clampedRange = clampRange(range, length: textStorage.length)
+		guard clampedRange.length > 0 else {
+			return super.accessibilityString(for: range)
+		}
+
+		let backingString = textStorage.string as NSString
+		var spokenSegments: [String] = []
+		textStorage.enumerateAttributes(in: clampedRange, options: []) { attributes, effectiveRange, _ in
+			if let token = tokenFromAttributes(attributes) {
+				spokenSegments.append(tokenAccessibilityLabel(for: token))
+			} else {
+				spokenSegments.append(backingString.substring(with: effectiveRange))
+			}
+		}
+
+		let spokenText = spokenSegments.joined(separator: " ")
+			.replacingOccurrences(of: "  ", with: " ")
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !spokenText.isEmpty else {
+			return super.accessibilityString(for: range)
+		}
+		return spokenText
+	}
+
+	override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+		guard let spokenText = accessibilityString(for: range) else {
+			return super.accessibilityAttributedString(for: range)
+		}
+		return NSAttributedString(string: spokenText)
+	}
+
 	// MARK: - NSTextFieldDelegate
 
 	func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -901,11 +1022,11 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 			return true
 		}
 		guard let active = activeVariableEditorContext else {
-			return focusAdjacentVariableToken(fromLocation: selectedRange().location, forward: forward)
+			return focusAdjacentToken(from: selectedRange(), forward: forward)
 		}
 
-		let currentLocation = active.range.location
+		let currentSelection = active.range
 		commitVariableEditorChanges()
-		return focusAdjacentVariableToken(fromLocation: currentLocation, forward: forward)
+		return focusAdjacentToken(from: currentSelection, forward: forward)
 	}
 }
