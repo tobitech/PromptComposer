@@ -49,7 +49,7 @@ Goal: Build a high-performance, fully-editable macOS prompt composer (NSTextView
   - Replace typed `@foo` with file token + trailing space.
   - Done when: selecting a suggestion inserts a file pill.
 
-- [ ] Step 8 — Slash commands
+- [x] Step 8 — Slash commands ✅
   - Detect `/` at line start or after whitespace.
   - Filter commands from `config.commands`.
   - Support insert-token and run-command modes.

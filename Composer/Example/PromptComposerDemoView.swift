@@ -20,11 +20,9 @@ struct PromptComposerDemoView: View {
 		config.suggestFiles = { query in
 			Self.sampleFileSuggestions(matching: query)
 		}
-		config.suggestionsProvider = { context in
-			guard context.triggerCharacter == "/" else { return [] }
-			return Self.sampleCommandSuggestions()
-		}
+		config.commands = Self.sampleCommands()
 		config.onSuggestionSelected = handleSuggestionSelection
+		config.onCommandExecuted = handleCommandExecution
 		config.onSubmit = handleSubmit
 		return config
 	}
@@ -50,6 +48,10 @@ struct PromptComposerDemoView: View {
 
 	private func handleSuggestionSelection(_ suggestion: PromptSuggestion) {
 		print("Selected suggestion: \(suggestion.title)")
+	}
+
+	private func handleCommandExecution(_ command: PromptCommand) {
+		print("Executed command: /\(command.keyword)")
 	}
 
 	private func handleSubmit() {
@@ -115,35 +117,39 @@ struct PromptComposerDemoView: View {
 		}
 	}
 
-	private static func sampleCommandSuggestions() -> [PromptSuggestion] {
+	private static func sampleCommands() -> [PromptCommand] {
 		[
-			PromptSuggestion(
+			PromptCommand(
+				keyword: "research",
 				title: "Research",
 				subtitle: "Access Dia's reasoning model for deeper thinking.",
-				kind: .command,
-				section: "General",
-				symbolName: "lightbulb"
+				section: "Insert token",
+				symbolName: "lightbulb",
+				mode: .insertToken
 			),
-			PromptSuggestion(
+			PromptCommand(
+				keyword: "analyze",
 				title: "Analyze",
 				subtitle: "Analyze this content, looking for bias, patterns, trends, contradictions.",
-				kind: .command,
-				section: "General",
-				symbolName: "magnifyingglass.circle"
+				section: "Insert token",
+				symbolName: "magnifyingglass.circle",
+				mode: .insertToken
 			),
-			PromptSuggestion(
+			PromptCommand(
+				keyword: "explain",
 				title: "Explain",
 				subtitle: "Please explain the concept, topic, or content in clear, accessible language.",
-				kind: .command,
-				section: "General",
-				symbolName: "lightbulb.max"
+				section: "Run command",
+				symbolName: "lightbulb.max",
+				mode: .runCommand
 			),
-			PromptSuggestion(
+			PromptCommand(
+				keyword: "summarize",
 				title: "Summarize",
 				subtitle: "Please provide a clear, concise summary of the attached content.",
-				kind: .command,
-				section: "General",
-				symbolName: "line.3.horizontal.decrease"
+				section: "Run command",
+				symbolName: "line.3.horizontal.decrease",
+				mode: .runCommand
 			)
 		]
 	}

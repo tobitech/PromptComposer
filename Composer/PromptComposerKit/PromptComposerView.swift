@@ -85,6 +85,7 @@ public struct PromptComposerView: NSViewRepresentable {
 
 		fileprivate var isApplyingSwiftUIUpdate = false
 		private var activeSuggestionTrigger: ActiveTrigger?
+		private var displayedCommandsBySuggestionID: [UUID: PromptCommand] = [:]
 
 		init(parent: PromptComposerView) {
 			self.parent = parent
@@ -153,6 +154,7 @@ public struct PromptComposerView: NSViewRepresentable {
 			let selectedRange = promptTextView.selectedRange()
 			let trigger = activeTrigger(in: promptTextView.string, selectedRange: selectedRange)
 			activeSuggestionTrigger = trigger
+			displayedCommandsBySuggestionID = [:]
 
 			let context = PromptSuggestionContext(
 				text: promptTextView.string,
@@ -165,6 +167,21 @@ public struct PromptComposerView: NSViewRepresentable {
 			let items: [PromptSuggestion]
 			if let trigger, trigger.character == "@", let suggestFiles = promptTextView.config.suggestFiles {
 				items = normalizedFileSuggestions(from: suggestFiles(trigger.query))
+			} else if let trigger, trigger.character == "/" {
+				let commands = filteredCommands(
+					from: promptTextView.config.commands,
+					query: trigger.query
+				)
+				displayedCommandsBySuggestionID = Dictionary(
+					uniqueKeysWithValues: commands.map { ($0.id, $0) }
+				)
+				if !commands.isEmpty {
+					items = commands.map(makeCommandSuggestion(from:))
+				} else if let provider = promptTextView.config.suggestionsProvider {
+					items = provider(context)
+				} else {
+					items = []
+				}
 			} else if let provider = promptTextView.config.suggestionsProvider {
 				items = provider(context)
 			} else {
@@ -181,13 +198,68 @@ public struct PromptComposerView: NSViewRepresentable {
 			guard
 				let textView,
 				let trigger = activeSuggestionTrigger
-					?? activeTrigger(in: textView.string, selectedRange: textView.selectedRange()),
-				trigger.character == "@"
+					?? activeTrigger(in: textView.string, selectedRange: textView.selectedRange())
 			else {
 				return
 			}
 
-			insertFileSuggestion(suggestion, replacing: trigger.replacementRange, in: textView)
+			switch trigger.character {
+			case "@":
+				insertFileSuggestion(suggestion, replacing: trigger.replacementRange, in: textView)
+			case "/":
+				guard
+					let command = displayedCommandsBySuggestionID[suggestion.id]
+						?? parent.config.commands.first(where: { $0.id == suggestion.id })
+				else {
+					return
+				}
+				handleSlashCommandSelection(
+					command,
+					replacing: trigger.replacementRange,
+					in: textView
+				)
+			default:
+				return
+			}
+		}
+
+		private func filteredCommands(
+			from commands: [PromptCommand],
+			query rawQuery: String
+		) -> [PromptCommand] {
+			let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard !query.isEmpty else { return commands }
+
+			return commands.filter { command in
+				command.keyword.localizedStandardContains(query)
+					|| command.title.localizedStandardContains(query)
+					|| (command.subtitle?.localizedStandardContains(query) ?? false)
+			}
+		}
+
+		private func makeCommandSuggestion(from command: PromptCommand) -> PromptSuggestion {
+			PromptSuggestion(
+				id: command.id,
+				title: command.title,
+				subtitle: command.subtitle,
+				kind: .command,
+				section: command.section,
+				symbolName: command.symbolName
+			)
+		}
+
+		private func handleSlashCommandSelection(
+			_ command: PromptCommand,
+			replacing range: NSRange,
+			in textView: PromptComposerTextView
+		) {
+			switch command.mode {
+			case .insertToken:
+				insertCommandSuggestion(command, replacing: range, in: textView)
+			case .runCommand:
+				removeTriggerText(replacing: range, in: textView)
+				parent.config.onCommandExecuted?(command)
+			}
 		}
 
 		private func normalizedFileSuggestions(from items: [PromptSuggestion]) -> [PromptSuggestion] {
@@ -246,6 +318,73 @@ public struct PromptComposerView: NSViewRepresentable {
 			activeSuggestionTrigger = nil
 		}
 
+		private func insertCommandSuggestion(
+			_ command: PromptCommand,
+			replacing range: NSRange,
+			in textView: PromptComposerTextView
+		) {
+			guard let textStorage = textView.textStorage else { return }
+
+			let clampedRange = clampRange(range, length: textStorage.length)
+			guard clampedRange.length > 0 else { return }
+
+			let token = makeCommandToken(from: command)
+			let typingAttributes = textView.typingAttributes
+			let tokenFont = (typingAttributes[.font] as? NSFont)
+				?? textView.font
+				?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+			let tokenTextColor = (typingAttributes[.foregroundColor] as? NSColor)
+				?? textView.textColor
+				?? .labelColor
+
+			let attachment = TokenAttachment(token: token)
+			attachment.attachmentCell = TokenAttachmentCell(
+				token: token,
+				font: tokenFont,
+				textColor: tokenTextColor
+			)
+
+			let replacement = NSMutableAttributedString(attachment: attachment)
+			if !typingAttributes.isEmpty {
+				replacement.addAttributes(
+					typingAttributes,
+					range: NSRange(location: 0, length: replacement.length)
+				)
+			}
+			replacement.append(NSAttributedString(string: " ", attributes: typingAttributes))
+
+			guard textView.shouldChangeText(in: clampedRange, replacementString: replacement.string) else {
+				return
+			}
+
+			textStorage.replaceCharacters(in: clampedRange, with: replacement)
+			textView.didChangeText()
+			textView.setSelectedRange(
+				NSRange(location: clampedRange.location + replacement.length, length: 0)
+			)
+			activeSuggestionTrigger = nil
+		}
+
+		private func removeTriggerText(
+			replacing range: NSRange,
+			in textView: PromptComposerTextView
+		) {
+			guard let textStorage = textView.textStorage else { return }
+
+			let clampedRange = clampRange(range, length: textStorage.length)
+			guard clampedRange.length > 0 else { return }
+			guard textView.shouldChangeText(in: clampedRange, replacementString: "") else {
+				return
+			}
+
+			textStorage.replaceCharacters(in: clampedRange, with: "")
+			textView.didChangeText()
+			textView.setSelectedRange(
+				NSRange(location: clampedRange.location, length: 0)
+			)
+			activeSuggestionTrigger = nil
+		}
+
 		private func makeFileToken(from suggestion: PromptSuggestion) -> Token {
 			var metadata: [String: String] = [
 				"suggestionID": suggestion.id.uuidString
@@ -256,6 +395,19 @@ public struct PromptComposerView: NSViewRepresentable {
 			return Token(
 				kind: .fileMention,
 				display: suggestion.title,
+				metadata: metadata
+			)
+		}
+
+		private func makeCommandToken(from command: PromptCommand) -> Token {
+			var metadata = command.metadata
+			metadata["commandID"] = command.id.uuidString
+			metadata["keyword"] = command.keyword
+			let display = command.tokenDisplay ?? command.title
+
+			return Token(
+				kind: .command,
+				display: display,
 				metadata: metadata
 			)
 		}
