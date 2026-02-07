@@ -7,6 +7,18 @@ extension PromptComposerTextView {
 		case #selector(NSResponder.insertNewline(_:)):
 			commitVariableEditorChanges()
 			return true
+		case #selector(NSResponder.moveRight(_:)),
+			#selector(NSResponder.moveForward(_:)):
+			return handleVariableEditorArrowNavigation(
+				in: textView,
+				movingForward: true
+			)
+		case #selector(NSResponder.moveLeft(_:)),
+			#selector(NSResponder.moveBackward(_:)):
+			return handleVariableEditorArrowNavigation(
+				in: textView,
+				movingForward: false
+			)
 		case #selector(NSResponder.insertTab(_:)):
 			return handleVariableEditorTabNavigation(forward: true)
 		case #selector(NSResponder.insertBacktab(_:)):
@@ -18,6 +30,36 @@ extension PromptComposerTextView {
 		default:
 			return false
 		}
+	}
+
+	func handleVariableEditorArrowNavigation(
+		in editorTextView: NSTextView,
+		movingForward: Bool
+	) -> Bool {
+		guard let active = activeVariableEditorContext else { return false }
+
+		let editorSelection = editorTextView.selectedRange()
+		guard editorSelection.length == 0 else { return false }
+
+		let editorLength = (editorTextView.string as NSString).length
+		if movingForward {
+			guard editorSelection.location >= editorLength else { return false }
+		} else {
+			guard editorSelection.location == 0 else { return false }
+		}
+
+		let targetLocation = movingForward
+			? active.range.location + active.range.length
+			: active.range.location
+
+		commitVariableEditorChanges()
+
+		let storageLength = textStorage?.length ?? string.utf16.count
+		let clampedTarget = min(max(0, targetLocation), storageLength)
+		let targetRange = NSRange(location: clampedTarget, length: 0)
+		setSelectedRange(targetRange)
+		scrollRangeToVisible(targetRange)
+		return true
 	}
 
 	func controlTextDidChange(_ obj: Notification) {
