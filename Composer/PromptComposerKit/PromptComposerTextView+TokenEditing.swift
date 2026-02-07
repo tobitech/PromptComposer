@@ -2,6 +2,50 @@ import AppKit
 import Foundation
 
 extension PromptComposerTextView {
+	func handleUnresolvedVariableTokenCommand(_ commandSelector: Selector) -> Bool {
+		let movingForward: Bool
+		switch commandSelector {
+		case #selector(NSResponder.moveRight(_:)):
+			movingForward = true
+		case #selector(NSResponder.moveLeft(_:)):
+			movingForward = false
+		default:
+			return false
+		}
+
+		return focusEncounteredUnresolvedVariableToken(movingForward: movingForward)
+	}
+
+	func focusEncounteredUnresolvedVariableToken(movingForward: Bool) -> Bool {
+		guard activeVariableEditorContext == nil else { return false }
+		guard let textStorage else { return false }
+
+		let selection = selectedRange()
+		guard selection.length == 0 else { return false }
+
+		let textLength = textStorage.length
+		let caretLocation = min(max(0, selection.location), textLength)
+		let candidateLocation: Int
+
+		if movingForward {
+			guard caretLocation < textLength else { return false }
+			candidateLocation = caretLocation
+		} else {
+			guard caretLocation > 0 else { return false }
+			candidateLocation = caretLocation - 1
+		}
+
+		guard
+			let context = variableTokenContext(containing: candidateLocation, in: textStorage),
+			!TokenAttachmentCell.isVariableResolved(context.token)
+		else {
+			return false
+		}
+
+		beginVariableTokenEditing(at: context.range.location, suggestedCellFrame: nil)
+		return true
+	}
+
 	func adjustedSelectionRange(from oldRange: NSRange, to proposedRange: NSRange) -> NSRange {
 		guard let storage = textStorage, storage.length > 0 else {
 			return proposedRange

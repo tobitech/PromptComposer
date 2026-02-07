@@ -175,6 +175,19 @@ public struct PromptComposerView: NSViewRepresentable {
 			)
 		}
 
+		public func textView(
+			_ textView: NSTextView,
+			doCommandBy commandSelector: Selector
+		) -> Bool {
+			guard !isApplyingSwiftUIUpdate,
+				let promptTextView = textView as? PromptComposerTextView
+			else {
+				return false
+			}
+
+			return promptTextView.handleUnresolvedVariableTokenCommand(commandSelector)
+		}
+
 		private func updateSuggestions(for promptTextView: PromptComposerTextView) {
 			let selectedRange = promptTextView.selectedRange()
 			let trigger = activeTrigger(in: promptTextView.string, selectedRange: selectedRange)
