@@ -78,6 +78,10 @@ public struct PromptComposerConfig {
 	public var hasHorizontalScroller: Bool = false
 	
 	public var isRichText: Bool = true
+
+	/// Keeps source text attributes (font, color, etc.) when pasting.
+	/// Set to `false` to always paste plain text that matches composer styling.
+	public var preservesPastedFormatting: Bool = false
 	
 	public var allowsUndo: Bool = true
 

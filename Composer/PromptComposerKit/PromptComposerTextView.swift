@@ -171,6 +171,15 @@ final class PromptComposerTextView: NSTextView, NSTextFieldDelegate {
 		super.keyDown(with: event)
 	}
 
+	override func paste(_ sender: Any?) {
+		guard config.preservesPastedFormatting else {
+			pasteAsPlainText(sender)
+			return
+		}
+
+		super.paste(sender)
+	}
+
 	override func resignFirstResponder() -> Bool {
 		let didResign = super.resignFirstResponder()
 		if didResign {
