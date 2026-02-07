@@ -183,9 +183,9 @@ extension PromptComposerTextView {
 			let wrappedIndex = ((selectedIndex + offset) % contexts.count + contexts.count) % contexts.count
 			targetContext = contexts[wrappedIndex]
 		} else if forward {
-			targetContext = contexts.first(where: { $0.range.location > clampedSelection.location }) ?? contexts[0]
+			targetContext = contexts.first(where: { $0.range.location >= clampedSelection.location }) ?? contexts[0]
 		} else {
-			targetContext = contexts.last(where: { ($0.range.location + $0.range.length) < clampedSelection.location })
+			targetContext = contexts.last(where: { ($0.range.location + $0.range.length) <= clampedSelection.location })
 				?? contexts[contexts.count - 1]
 		}
 
@@ -207,16 +207,7 @@ extension PromptComposerTextView {
 			return explicitSelectionMatch
 		}
 
-		guard selection.length == 0 else { return nil }
-		guard let textStorage else { return nil }
-
-		let caretLocation = min(max(0, selection.location), textStorage.length)
-		if let containingCaret = contexts.firstIndex(where: { NSLocationInRange(caretLocation, $0.range) }) {
-			return containingCaret
-		}
-		guard caretLocation > 0 else { return nil }
-		let previousLocation = caretLocation - 1
-		return contexts.firstIndex(where: { NSLocationInRange(previousLocation, $0.range) })
+		return nil
 	}
 
 	func expandedTokenRange(for range: NSRange, in textStorage: NSTextStorage) -> NSRange {
